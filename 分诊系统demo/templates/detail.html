@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}提问详情 - 医联体分级会诊系统{% endblock %}
+
+{% block content %}
+{% if no_permission %}
+<div class="page-card p-4 text-center">
+    <h1 class="h4 text-danger">您没有权限查看该内容</h1>
+    <p class="text-secondary">该提问不是您发起的，且您的医院等级不在提问者设置的可见范围内。</p>
+    <a class="btn btn-primary" href="{{ url_for('home') }}">返回首页</a>
+</div>
+{% else %}
+<div class="page-card p-3 p-md-4 mb-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+        <div>
+            <h1 class="h3 medical-title mb-2">{{ consultation.title }}</h1>
+            <span class="badge {{ status_class(consultation.status) }}">{{ consultation.status }}</span>
+        </div>
+        <a class="btn btn-outline-secondary align-self-start" href="javascript:history.back()">返回</a>
+    </div>
+    <div class="text-secondary mb-3">
+        提问人：{{ consultation.asker_name }}｜
+        所属医院：{{ consultation.asker_hospital_name }}｜
+        科室：{{ consultation.asker_department }}｜
+        提问时间：{{ consultation.create_time }}
+    </div>
+    <div class="text-secondary small mb-3">
+        此提问对以下等级医院可见：{{ format_visible_level_names(consultation.visible_levels) }}
+    </div>
+    <div class="border rounded p-3 bg-light content-text">{{ consultation.content }}</div>
+    {% if consultation.attachment_path %}
+    <div class="mt-3">
+        <div class="fw-semibold mb-2">提问附件</div>
+        {% if is_image_file(consultation.attachment_name or consultation.attachment_path) %}
+        <img class="img-fluid rounded border mb-2" src="{{ url_for('download_attachment', filename=consultation.attachment_path) }}" alt="提问附件">
+        {% elif is_video_file(consultation.attachment_name or consultation.attachment_path) %}
+        <video class="w-100 rounded border mb-2" controls>
+            <source src="{{ url_for('download_attachment', filename=consultation.attachment_path) }}">
+        </video>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_attachment', filename=consultation.attachment_path) }}">
+            下载附件：{{ consultation.attachment_name or "附件" }}
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="page-card p-3 p-md-4">
+    <h2 class="h5 medical-title mb-3">回复区</h2>
+
+    {% if can_reply %}
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('reply', consultation_id=consultation.id) }}">
+        <div class="mb-3">
+            <label class="form-label">回复内容</label>
+            <textarea class="form-control" name="reply_content" rows="7" required placeholder="请输入会诊意见、检查建议、用药或转诊建议"></textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">回复附件（可选）</label>
+            <input class="form-control" type="file" name="reply_attachment" accept="image/*,video/*,.pdf">
+            <div class="form-text">支持图片、视频和 PDF 文件。</div>
+        </div>
+        <button class="btn btn-primary" type="submit">提交回复</button>
+    </form>
+    {% elif consultation.status == "已回复" %}
+    <div class="text-secondary mb-3">
+        回复人：{{ consultation.replier_name or "未知" }}｜
+        科室：{{ consultation.replier_department or "未知" }}｜
+        回复时间：{{ consultation.reply_time }}
+    </div>
+    <div class="border rounded p-3 bg-light content-text">{{ consultation.reply_content }}</div>
+    {% if consultation.reply_attachment_path %}
+    <div class="mt-3">
+        <div class="fw-semibold mb-2">回复附件</div>
+        {% if is_image_file(consultation.reply_attachment_name or consultation.reply_attachment_path) %}
+        <img class="img-fluid rounded border mb-2" src="{{ url_for('download_attachment', filename=consultation.reply_attachment_path) }}" alt="回复附件">
+        {% elif is_video_file(consultation.reply_attachment_name or consultation.reply_attachment_path) %}
+        <video class="w-100 rounded border mb-2" controls>
+            <source src="{{ url_for('download_attachment', filename=consultation.reply_attachment_path) }}">
+        </video>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_attachment', filename=consultation.reply_attachment_path) }}">
+            下载附件：{{ consultation.reply_attachment_name or "附件" }}
+        </a>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="alert alert-warning mb-0">该提问正在等待被请教医院回复。</div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
