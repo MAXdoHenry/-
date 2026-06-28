@@ -9,7 +9,19 @@
     {% if not target_hospitals %}
     <div class="alert alert-info mb-0">暂无可请教的其他医院。</div>
     {% else %}
+    {% if invite_user %}
+    <div class="alert alert-info">
+        本次会诊来自私聊，将自动把 {{ doctor_display_name(invite_user) }} 拉入病例聊天室。
+    </div>
+    {% endif %}
+    {% if source_group %}
+    <div class="alert alert-info">
+        本次会诊来自群聊「{{ source_group.group_name }}」，创建后会自动拉群成员进入病例聊天室。
+    </div>
+    {% endif %}
     <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="invite_user_id" value="{{ invite_user_id }}">
+        <input type="hidden" name="source_group_id" value="{{ source_group_id }}">
         <div class="mb-3">
             <label class="form-label">标题 <span class="text-danger">*</span></label>
             <input class="form-control" name="title" required placeholder="请输入提问标题">
@@ -30,7 +42,7 @@
         <div class="mb-4">
             <label class="form-label">上传附件（可选）</label>
             <input class="form-control" type="file" name="attachment" accept="image/*,video/*,.pdf">
-            <div class="form-text">支持图片、视频和 PDF 文件。</div>
+            <div class="form-text">支持图片、视频和文档文件。</div>
         </div>
         {% if visible_level_options %}
         <div class="mb-4">

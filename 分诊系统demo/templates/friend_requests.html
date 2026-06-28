@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}新的朋友 - 医联体分级会诊系统{% endblock %}
+
+{% block content %}
+<div class="page-card p-3 p-md-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 medical-title mb-0">新的朋友</h1>
+        <a class="btn btn-outline-secondary" href="{{ url_for('friends') }}">返回好友</a>
+    </div>
+    {% if requests %}
+        {% for item in requests %}
+        <div class="border rounded p-3 mb-3 bg-light">
+            <div class="d-flex gap-3">
+                <div class="avatar-circle">{{ avatar_text(item) }}</div>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold">{{ item.name }}｜{{ item.title }}</div>
+                    <div class="text-secondary small">{{ item.hospital_name }}｜{{ item.department }}</div>
+                    <div class="mt-2 content-text">{{ item.apply_msg }}</div>
+                    <form method="post" class="row g-2 mt-2">
+                        <input type="hidden" name="relation_id" value="{{ item.id }}">
+                        <div class="col-12 col-md-5">
+                            <select class="form-select" name="friend_group">
+                                {% for group in friend_groups %}
+                                <option value="{{ group.group_name }}">{{ group.group_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-auto">
+                            <button class="btn btn-primary w-100" name="action" value="accept" type="submit">同意</button>
+                        </div>
+                        <div class="col-6 col-md-auto">
+                            <button class="btn btn-outline-danger w-100" name="action" value="reject" type="submit">拒绝</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+    <p class="text-secondary mb-0">暂无待处理好友申请。</p>
+    {% endif %}
+</div>
+{% endblock %}

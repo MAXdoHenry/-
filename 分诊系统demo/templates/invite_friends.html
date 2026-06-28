@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}邀请好友 - 医联体分级会诊系统{% endblock %}
+
+{% block content %}
+<div class="page-card p-3 p-md-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 medical-title mb-1">邀请好友</h1>
+            <p class="text-secondary mb-0">
+                {% if mode == 'case' %}
+                邀请好友加入病例聊天室「{{ group.group_name }}」
+                {% else %}
+                邀请好友加入群聊「{{ group.group_name }}」
+                {% endif %}
+            </p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('group_chat', group_id=group.id) }}">返回</a>
+    </div>
+    <form method="post">
+        <div class="border rounded p-3 bg-light mb-3">
+            {% for friend in friends %}
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="member_ids" value="{{ friend.id }}" id="invite_{{ friend.id }}">
+                <label class="form-check-label" for="invite_{{ friend.id }}">
+                    {{ friend.name }}｜{{ friend.title }}｜{{ friend.hospital_name }}｜{{ friend.department }}
+                </label>
+            </div>
+            {% else %}
+            <p class="text-secondary mb-0">暂无好友可邀请。</p>
+            {% endfor %}
+        </div>
+        <button class="btn btn-primary" type="submit">确认邀请</button>
+    </form>
+</div>
+{% endblock %}

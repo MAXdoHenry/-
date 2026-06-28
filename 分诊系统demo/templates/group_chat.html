@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}群聊 - 医联体分级会诊系统{% endblock %}
+
+{% block content %}
+<div class="page-card p-3 p-md-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+        <div>
+            <h1 class="h5 medical-title mb-1">{{ group.group_name }}</h1>
+            <div class="text-secondary small">{{ group_type_label(group.group_type) }}｜成员 {{ members|length }} 人</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-self-md-start">
+            {% if group.consultation_id %}
+            <a class="btn btn-sm btn-primary" href="{{ url_for('consultation_detail', consultation_id=group.consultation_id) }}">查看病例</a>
+            {% else %}
+            <a class="btn btn-sm btn-primary" href="{{ url_for('new_consultation', source_group_id=group.id) }}">发起病例会诊</a>
+            {% endif %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('group_settings', group_id=group.id) }}">群设置</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('groups') }}">返回群聊</a>
+        </div>
+    </div>
+
+    <div class="chat-panel border rounded p-3 mb-3">
+        {% for message in messages %}
+        <div class="chat-row {% if message.sender_id == current_user.id %}self{% endif %}">
+            {% if message.sender_id != current_user.id %}
+            <div class="avatar-circle">{{ message.sender_name[:1] }}</div>
+            {% endif %}
+            <div class="chat-bubble">
+                {% if message.sender_id != current_user.id %}
+                <div class="fw-semibold small">{{ message.sender_name }}｜{{ message.sender_hospital }}｜{{ message.sender_department }}</div>
+                {% endif %}
+                <div class="content-text">{{ message.content }}</div>
+                {% if message.attachment_path %}
+                <div class="mt-2">
+                    {% if is_image_file(message.attachment_name or message.attachment_path) %}
+                    <img class="img-fluid rounded border mb-2" src="{{ url_for('download_attachment', filename=message.attachment_path) }}" alt="群聊附件">
+                    {% elif is_video_file(message.attachment_name or message.attachment_path) %}
+                    <video class="w-100 rounded border mb-2" controls>
+                        <source src="{{ url_for('download_attachment', filename=message.attachment_path) }}">
+                    </video>
+                    {% endif %}
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_attachment', filename=message.attachment_path) }}">
+                        下载附件：{{ message.attachment_name or "附件" }}
+                    </a>
+                </div>
+                {% endif %}
+                {% if contains_sensitive_terms(message.content) %}
+                <div class="risk-note">本交流仅作临床参考，不作为正式诊断依据。</div>
+                {% endif %}
+                <div class="text-secondary small mt-2">{{ message.send_time }}</div>
+            </div>
+            {% if message.sender_id == current_user.id %}
+            <div class="avatar-circle">{{ current_user.avatar or current_user.name[:1] }}</div>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="text-secondary mb-0">暂无消息。</p>
+        {% endfor %}
+    </div>
+
+    <form method="post" enctype="multipart/form-data" onsubmit="return warnSensitiveContent(this)">
+        <div class="mb-2">
+            <textarea class="form-control" name="content" rows="2" placeholder="请输入群消息；也可以只上传附件"></textarea>
+        </div>
+        <div class="row g-2 align-items-center">
+            <div class="col-12 col-md">
+                <input class="form-control" type="file" name="group_attachment" accept="image/*,video/*,.pdf">
+                <div class="form-text">支持图片、视频和文档文件。</div>
+            </div>
+            <div class="col-12 col-md-auto">
+                <button class="btn btn-primary w-100" type="submit">发送</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelector('textarea[name="content"]').addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        event.target.form.requestSubmit();
+    }
+});
+</script>
+{% endblock %}
