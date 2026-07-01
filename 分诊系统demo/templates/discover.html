@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}发现 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}发现{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('new_consultation') }}" title="发起提问">＋</a>
+{% endblock %}
+
+{% block content %}
+<div class="discover-summary">
+    <div class="stat-card">
+        <div class="text-secondary small">我发起的提问</div>
+        <div class="h3 mb-0 text-primary">{{ stats.my_total }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="text-secondary small">我的待回复</div>
+        <div class="h3 mb-0 text-warning">{{ stats.my_pending }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="text-secondary small">我的已回复</div>
+        <div class="h3 mb-0 text-success">{{ stats.my_replied }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="text-secondary small">可处理待回复</div>
+        <div class="h3 mb-0 text-danger">{{ stats.subordinate_pending }}</div>
+    </div>
+</div>
+
+<div class="section-band">别人向医联体公开或指派给我的提问</div>
+{% if visible_consultations %}
+    {% for item in visible_consultations %}
+    <a class="discover-card d-block text-reset" href="{{ url_for('consultation_detail', consultation_id=item.id) }}">
+        <div class="d-flex gap-3">
+            <div class="avatar-circle">{{ item.asker_name[:1] }}</div>
+            <div class="row-main">
+                <div class="d-flex justify-content-between gap-2">
+                    <div class="fw-semibold text-primary">{{ item.asker_name }}｜{{ item.asker_hospital_name }}</div>
+                    <div class="text-secondary small text-nowrap">{{ item.create_time }}</div>
+                </div>
+                <div class="h6 mt-2 mb-1">{{ item.title }}</div>
+                <div class="row-subtitle">{{ item.content }}</div>
+                <div class="mt-2">
+                    <span class="badge {{ status_class(item.status) }}">{{ item.status }}</span>
+                    <span class="badge text-bg-light">{{ item.asker_department }}</span>
+                </div>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+{% else %}
+<div class="p-4 text-center text-secondary">暂无可查看的他人提问。</div>
+{% endif %}
+{% endblock %}

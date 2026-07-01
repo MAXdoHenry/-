@@ -51,8 +51,13 @@
 from __future__ import annotations
 
 import functools
+import hmac
+import hashlib
+import json
 import re
 import sqlite3
+import time
+import base64
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -85,6 +90,8 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "hospital_consult.db"
 UPLOAD_DIR = BASE_DIR / "uploads"
 TIME_FORMAT = "%Y-%m-%d %H:%M"
+CHAT_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 8
+CHAT_SECRET_KEY = "demo-secret-key-for-hospital-consult-system"
 ALLOWED_ATTACHMENT_EXTENSIONS = {
     "png",
     "jpg",
@@ -120,6 +127,59 @@ SENSITIVE_TERMS = ["诊断", "用药", "治疗方案", "处方", "剂量", "手�
 def now_text() -> str:
     """返回统一格式的当前时间文本。"""
     return datetime.now().strftime(TIME_FORMAT)
+
+
+def _base64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _base64url_decode(data: str) -> bytes:
+    padding = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode(data + padding)
+
+
+def sign_chat_token(user_id: int) -> str:
+    """为独立 WebSocket 服务签发轻量身份 token。"""
+    payload = {
+        "user_id": int(user_id),
+        "iat": int(time.time()),
+    }
+    payload_text = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    payload_part = _base64url_encode(payload_text.encode("utf-8"))
+    signature = hmac.new(
+        CHAT_SECRET_KEY.encode("utf-8"),
+        payload_part.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    return f"{payload_part}.{_base64url_encode(signature)}"
+
+
+def verify_chat_token(token: str) -> Optional[int]:
+    """校验聊天 token，返回用户 id。独立服务会复用同样逻辑。"""
+    try:
+        payload_part, signature_part = token.split(".", 1)
+    except ValueError:
+        return None
+    expected = hmac.new(
+        CHAT_SECRET_KEY.encode("utf-8"),
+        payload_part.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    try:
+        actual = _base64url_decode(signature_part)
+    except Exception:
+        return None
+    if not hmac.compare_digest(expected, actual):
+        return None
+    try:
+        payload = json.loads(_base64url_decode(payload_part).decode("utf-8"))
+    except Exception:
+        return None
+    issued_at = int(payload.get("iat", 0))
+    if issued_at <= 0 or time.time() - issued_at > CHAT_TOKEN_MAX_AGE_SECONDS:
+        return None
+    user_id = payload.get("user_id")
+    return int(user_id) if isinstance(user_id, int) else None
 
 
 def clean_filename(filename: str) -> str:
@@ -1840,6 +1900,101 @@ def get_my_groups(user_id: int, group_type: str = "全部") -> List[sqlite3.Row]
         conn.close()
 
 
+def get_private_conversation_summaries(user_id: int) -> List[Dict[str, Any]]:
+    """消息首页使用：把好友私聊整理成类似微信会话列表的数据。"""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                fr.friend_group,
+                u.*,
+                h.name AS hospital_name,
+                h.level AS hospital_level,
+                (
+                    SELECT content
+                    FROM private_messages m
+                    WHERE m.is_deleted = 0
+                      AND (
+                          (m.sender_id = ? AND m.receiver_id = u.id)
+                          OR (m.sender_id = u.id AND m.receiver_id = ?)
+                      )
+                    ORDER BY m.send_time DESC, m.id DESC
+                    LIMIT 1
+                ) AS last_message,
+                (
+                    SELECT send_time
+                    FROM private_messages m
+                    WHERE m.is_deleted = 0
+                      AND (
+                          (m.sender_id = ? AND m.receiver_id = u.id)
+                          OR (m.sender_id = u.id AND m.receiver_id = ?)
+                      )
+                    ORDER BY m.send_time DESC, m.id DESC
+                    LIMIT 1
+                ) AS last_message_time,
+                (
+                    SELECT COUNT(*)
+                    FROM private_messages m
+                    WHERE m.sender_id = u.id
+                      AND m.receiver_id = ?
+                      AND m.is_read = 0
+                      AND m.is_deleted = 0
+                ) AS unread_count
+            FROM friend_relations fr
+            JOIN users u ON fr.friend_id = u.id
+            JOIN hospitals h ON u.hospital_id = h.id
+            WHERE fr.user_id = ?
+              AND fr.status = 'accepted'
+            ORDER BY COALESCE(last_message_time, fr.update_time, fr.create_time) DESC, u.id
+            """,
+            (user_id, user_id, user_id, user_id, user_id, user_id),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_message_threads(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """合并好友私聊和群聊，用一个页面展示所有沟通入口。"""
+    threads: List[Dict[str, Any]] = []
+    for friend in get_private_conversation_summaries(current_user["id"]):
+        threads.append(
+            {
+                "kind": "private",
+                "target_id": friend["id"],
+                "title": f"{friend['name']}｜{friend['title']}",
+                "subtitle": f"{friend['hospital_name']}｜{friend['department']}",
+                "last_message": friend["last_message"] or "还没有消息，点击开始沟通",
+                "last_time": friend["last_message_time"] or "",
+                "sort_time": friend["last_message_time"] or "",
+                "unread_count": friend["unread_count"],
+                "avatar": avatar_text(friend),
+            }
+        )
+
+    for group in get_my_groups(current_user["id"]):
+        last_message = group["last_message"] or "暂无消息"
+        if not group["last_message"] and group["last_message_time"]:
+            last_message = "附件消息"
+        threads.append(
+            {
+                "kind": "group",
+                "target_id": group["id"],
+                "title": group["group_name"],
+                "subtitle": f"{group_type_label(group['group_type'])}｜成员 {group['member_count']} 人",
+                "last_message": last_message,
+                "last_time": group["last_message_time"] or group["create_time"],
+                "sort_time": group["last_message_time"] or group["create_time"],
+                "unread_count": group["unread_count"],
+                "avatar": "群",
+            }
+        )
+
+    threads.sort(key=lambda item: item["sort_time"] or "", reverse=True)
+    return threads
+
+
 def send_group_message(
     group_id: int,
     sender: Dict[str, Any],
@@ -2120,6 +2275,8 @@ if app is not None:
             "group_type_labels": GROUP_TYPE_LABELS,
             "sensitive_terms": SENSITIVE_TERMS,
             "unread_summary": get_unread_summary(get_current_user()),
+            "chat_token": sign_chat_token(get_current_user()["id"]) if get_current_user() else "",
+            "chat_ws_base": f"{'wss' if request.is_secure else 'ws'}://{request.host.split(':')[0]}:8001/ws",
         }
 
     @app.route("/login", methods=["GET", "POST"])
@@ -2154,13 +2311,54 @@ if app is not None:
     @app.route("/")
     @login_required
     def home(current_user: Dict[str, Any]):
-        """首页：欢迎语、统计卡片、最新 5 条可见提问。"""
-        stats = get_dashboard_stats(current_user)
-        latest_consultations = get_visible_latest_consultations(current_user)
+        """默认进入消息页，贴近微信式工作台。"""
+        return redirect(url_for("messages"))
+
+    @app.route("/messages")
+    @login_required
+    def messages(current_user: Dict[str, Any]):
+        """消息：私聊和群聊放在同一个会话列表。"""
         return render_template(
-            "home.html",
+            "messages.html",
+            threads=get_message_threads(current_user),
+        )
+
+    @app.route("/contacts")
+    @login_required
+    def contacts(current_user: Dict[str, Any]):
+        """通讯录：展示全部好友和群聊。"""
+        return render_template(
+            "contacts.html",
+            grouped_friends=get_friends_grouped(current_user["id"]),
+            groups=get_my_groups(current_user["id"]),
+            pending_count=len(get_pending_friend_requests(current_user["id"])),
+        )
+
+    @app.route("/discover")
+    @login_required
+    def discover(current_user: Dict[str, Any]):
+        """发现：展示可见的他人提问和统计信息。"""
+        stats = get_dashboard_stats(current_user)
+        visible_consultations = get_subordinate_consultations(
+            current_user=current_user,
+            limit=20,
+        )
+        return render_template(
+            "discover.html",
             stats=stats,
-            latest_consultations=latest_consultations,
+            visible_consultations=visible_consultations,
+        )
+
+    @app.route("/me")
+    @login_required
+    def me(current_user: Dict[str, Any]):
+        """我：个人资料和自己发起的提问。"""
+        my_items = get_my_consultations(current_user["id"])
+        stats = get_dashboard_stats(current_user)
+        return render_template(
+            "me.html",
+            my_consultations=my_items,
+            stats=stats,
         )
 
     @app.route("/consultations/new", methods=["GET", "POST"])

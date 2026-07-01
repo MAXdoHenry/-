@@ -5,48 +5,204 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}医联体分级会诊系统{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        body { background: #f4f8fc; }
-        .navbar { box-shadow: 0 2px 10px rgba(13, 110, 253, 0.08); }
-        .page-card {
-            background: #fff;
-            border: 1px solid #dbe8f6;
-            border-radius: 12px;
-            box-shadow: 0 4px 18px rgba(35, 80, 130, 0.06);
+        :root {
+            --app-green: #25c15f;
+            --app-bg: #f5f5f5;
+            --line: #e9e9e9;
+            --muted: #8b8b8b;
         }
-        .stat-card {
-            border: 1px solid #dbe8f6;
-            border-left: 5px solid #0d6efd;
-            border-radius: 12px;
-            background: #fff;
+        html, body { min-height: 100%; }
+        body {
+            background: var(--app-bg);
+            color: #111;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
         }
-        .medical-title { color: #0b5ed7; font-weight: 700; }
-        .content-text { white-space: pre-wrap; line-height: 1.8; }
-        .avatar-circle {
-            width: 42px;
-            height: 42px;
+        a { text-decoration: none; }
+        .app-shell {
+            max-width: 860px;
+            min-height: 100vh;
+            margin: 0 auto;
+            background: #fff;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, .04);
+        }
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 56px;
+            padding: .65rem 1rem;
+            background: #ededed;
+            border-bottom: 1px solid #ddd;
+        }
+        .app-header-title {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 58%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 1.08rem;
+            font-weight: 700;
+        }
+        .header-actions {
+            display: flex;
+            gap: .45rem;
+            margin-left: auto;
+        }
+        .icon-button {
+            width: 36px;
+            height: 36px;
+            border: 0;
             border-radius: 50%;
-            background: #0d6efd;
-            color: #fff;
+            background: transparent;
+            color: #111;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            flex: 0 0 auto;
+            font-size: 1.35rem;
+            line-height: 1;
         }
+        .icon-button:hover { background: rgba(0, 0, 0, .06); }
+        .app-main {
+            min-height: calc(100vh - 56px);
+            padding-bottom: 76px;
+            background: #fff;
+        }
+        .login-main { padding-bottom: 0; background: var(--app-bg); }
+        .bottom-tabs {
+            position: fixed;
+            left: 50%;
+            bottom: 0;
+            z-index: 30;
+            width: min(860px, 100%);
+            transform: translateX(-50%);
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            height: 66px;
+            background: #f7f7f7;
+            border-top: 1px solid #dcdcdc;
+        }
+        .bottom-tab {
+            position: relative;
+            color: #111;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: .12rem;
+            font-size: .78rem;
+        }
+        .bottom-tab.active { color: var(--app-green); }
+        .bottom-tab .tab-icon { font-size: 1.55rem; line-height: 1; }
+        .tab-badge {
+            position: absolute;
+            top: 8px;
+            right: calc(50% - 26px);
+            min-width: 17px;
+            height: 17px;
+            padding: 0 4px;
+            border-radius: 999px;
+            background: #fa5151;
+            color: #fff;
+            font-size: .68rem;
+            line-height: 17px;
+            text-align: center;
+        }
+        .page-card {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+        .section-band {
+            background: #f6f6f6;
+            color: #777;
+            font-size: .82rem;
+            padding: .42rem 1rem;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+        }
+        .list-row {
+            display: flex;
+            gap: .85rem;
+            align-items: center;
+            min-height: 72px;
+            padding: .75rem 1rem;
+            color: #111;
+            border-bottom: 1px solid var(--line);
+            background: #fff;
+        }
+        .list-row:hover { background: #f9f9f9; color: #111; }
+        .row-main { flex: 1 1 auto; min-width: 0; }
+        .row-title {
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+            font-size: 1rem;
+            font-weight: 650;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .row-subtitle {
+            color: var(--muted);
+            font-size: .86rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: .18rem;
+        }
+        .row-meta {
+            flex: 0 0 auto;
+            color: #aaa;
+            font-size: .78rem;
+            text-align: right;
+            max-width: 7rem;
+        }
+        .avatar-circle, .square-avatar {
+            width: 48px;
+            height: 48px;
+            flex: 0 0 48px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 700;
+        }
+        .avatar-circle {
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4f8cff, #25c15f);
+        }
+        .square-avatar {
+            border-radius: 8px;
+            background: #5ab9ff;
+        }
+        .group-avatar { background: #25c15f; }
+        .stat-card {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+        }
+        .medical-title { color: #111; font-weight: 750; }
+        .content-text { white-space: pre-wrap; line-height: 1.8; }
         .chat-panel {
             min-height: 420px;
             max-height: 62vh;
             overflow-y: auto;
-            background: #f8fbff;
+            background: #f5f5f5;
         }
         .chat-row { display: flex; margin-bottom: 1rem; gap: .75rem; }
         .chat-row.self { justify-content: flex-end; }
-        .chat-row.self .chat-bubble { background: #dbeafe; border-color: #b6d4fe; }
+        .chat-row.self .chat-bubble { background: #95ec69; border-color: #95ec69; }
         .chat-bubble {
             max-width: min(76%, 720px);
-            border: 1px solid #dbe8f6;
-            border-radius: 12px;
+            border: 1px solid #e1e1e1;
+            border-radius: 8px;
             background: #fff;
             padding: .75rem .9rem;
         }
@@ -63,73 +219,123 @@
             vertical-align: top;
             margin-left: .15rem;
         }
+        .profile-hero {
+            min-height: 172px;
+            padding: 1.5rem 1rem;
+            color: #fff;
+            background:
+                linear-gradient(rgba(0, 0, 0, .24), rgba(0, 0, 0, .48)),
+                linear-gradient(135deg, #3a8dde, #29b765 58%, #6578d7);
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .profile-avatar {
+            width: 74px;
+            height: 74px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, .92);
+            color: #111;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: 800;
+            flex: 0 0 auto;
+        }
+        .discover-card {
+            border-bottom: 1px solid var(--line);
+            padding: 1rem;
+            background: #fff;
+        }
+        .discover-summary {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .65rem;
+            padding: 1rem;
+            background: #fff;
+        }
+        .discover-summary .stat-card { padding: .8rem; }
+        .alert-area { padding: 1rem 1rem 0; }
+        .btn-primary {
+            --bs-btn-bg: #25c15f;
+            --bs-btn-border-color: #25c15f;
+            --bs-btn-hover-bg: #1fb354;
+            --bs-btn-hover-border-color: #1fb354;
+        }
+        .text-primary { color: #25a957 !important; }
+        @media (min-width: 768px) {
+            .app-main { min-height: calc(100vh - 56px); }
+            .bottom-tabs { border-left: 1px solid #dcdcdc; border-right: 1px solid #dcdcdc; }
+        }
     </style>
 </head>
 <body>
-{% if current_user %}
-<nav class="navbar navbar-expand-lg bg-white sticky-top">
-    <div class="container">
-        <a class="navbar-brand medical-title" href="{{ url_for('home') }}">医联体分级会诊系统</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="mainNavbar">
-            <ul class="navbar-nav mx-auto mb-2 mb-lg-0">
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('home') }}">首页</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('new_consultation') }}">发起提问</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('my_consultations') }}">我的提问</a></li>
-                {% if current_user.hospital_level in [1, 2] %}
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('subordinate_consultations') }}">会诊提问列表</a></li>
-                {% endif %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('friends') }}">
-                        好友
-                        {% if unread_summary.friend_requests %}
-                        <span class="badge rounded-pill text-bg-danger nav-badge">{{ unread_summary.friend_requests }}</span>
-                        {% endif %}
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('groups') }}">
-                        群聊
-                        {% if unread_summary.group_messages %}
-                        <span class="badge rounded-pill text-bg-danger nav-badge">{{ unread_summary.group_messages }}</span>
-                        {% endif %}
-                    </a>
-                </li>
-            </ul>
-            <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-2 small text-secondary">
-                <span>{{ current_user.name }}｜{{ current_user.hospital_name }}｜{{ current_user.department }}｜{{ current_user.title }}</span>
-                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('logout') }}">退出</a>
-            </div>
+<div class="app-shell">
+    {% if current_user %}
+    <header class="app-header">
+        {% block header_left %}<span></span>{% endblock %}
+        <div class="app-header-title">{% block page_title %}医联体{% endblock %}</div>
+        <div class="header-actions">
+            {% block header_actions %}
+            <a class="icon-button" href="{{ url_for('add_friend') }}" title="添加好友"><i class="bi bi-plus-lg"></i></a>
+            {% endblock %}
         </div>
-    </div>
-</nav>
-{% endif %}
-
-<main class="container py-4">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
-    {% if current_user and answer_notifications %}
-    <div class="alert alert-info" role="alert">
-        <strong>您的提问已被回答：</strong>
-        {% for item in answer_notifications %}
-            <a class="alert-link me-2" href="{{ url_for('consultation_detail', consultation_id=item.id) }}">{{ item.title }}</a>
-        {% endfor %}
-    </div>
+    </header>
     {% endif %}
 
-    {% block content %}{% endblock %}
-</main>
+    <main class="app-main {% if not current_user %}login-main{% endif %}">
+        <div class="alert-area">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% if current_user and answer_notifications %}
+        <div class="alert alert-info" role="alert">
+            <strong>您的提问已被回答：</strong>
+            {% for item in answer_notifications %}
+                <a class="alert-link me-2" href="{{ url_for('consultation_detail', consultation_id=item.id) }}">{{ item.title }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+        </div>
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% if current_user %}
+    {% set total_messages = unread_summary.private_messages + unread_summary.group_messages %}
+    {% set current_endpoint = request.endpoint or '' %}
+    <nav class="bottom-tabs" aria-label="主导航">
+        <a class="bottom-tab {% if current_endpoint in ['home', 'messages', 'private_chat', 'group_chat'] %}active{% endif %}" href="{{ url_for('messages') }}">
+            <span class="tab-icon"><i class="bi bi-chat-dots"></i></span>
+            <span>微信</span>
+            {% if total_messages %}<span class="tab-badge">{{ total_messages }}</span>{% endif %}
+        </a>
+        <a class="bottom-tab {% if current_endpoint in ['contacts', 'friends', 'friend_profile', 'add_friend', 'friend_requests', 'friend_group_manager', 'groups', 'new_group', 'group_settings', 'group_invite'] %}active{% endif %}" href="{{ url_for('contacts') }}">
+            <span class="tab-icon"><i class="bi bi-person-lines-fill"></i></span>
+            <span>通讯录</span>
+            {% if unread_summary.friend_requests %}<span class="tab-badge">{{ unread_summary.friend_requests }}</span>{% endif %}
+        </a>
+        <a class="bottom-tab {% if current_endpoint in ['discover', 'subordinate_consultations', 'consultation_detail', 'case_chat', 'invite_friends_to_case'] %}active{% endif %}" href="{{ url_for('discover') }}">
+            <span class="tab-icon"><i class="bi bi-compass"></i></span>
+            <span>发现</span>
+        </a>
+        <a class="bottom-tab {% if current_endpoint in ['me', 'my_consultations', 'new_consultation'] %}active{% endif %}" href="{{ url_for('me') }}">
+            <span class="tab-icon"><i class="bi bi-person"></i></span>
+            <span>我</span>
+        </a>
+    </nav>
+    {% endif %}
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
