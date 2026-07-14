@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}群聊 - 医联体分级会诊系统{% endblock %}
+
+{% block content %}
+<style>
+    .group-composer {
+        border: 1px solid #e1e1e1;
+        border-radius: 14px;
+        background: #f7f7f7;
+        padding: .7rem;
+    }
+    .group-composer-row {
+        display: flex;
+        align-items: center;
+        gap: .7rem;
+    }
+    .composer-icon-btn {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #111;
+        border-radius: 50%;
+        background: #fff;
+        color: #111;
+        font-size: 1.45rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .composer-icon-btn:hover {
+        background: #f1f1f1;
+        color: #111;
+    }
+    .composer-input-wrap {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .composer-input {
+        width: 100%;
+        min-height: 46px;
+        max-height: 110px;
+        resize: none;
+        border: 0;
+        border-radius: 8px;
+        background: #fff;
+        padding: .65rem 2.75rem .65rem .85rem;
+        box-shadow: 0 1px 5px rgba(0, 0, 0, .05);
+    }
+    .composer-input:focus {
+        outline: 0;
+        box-shadow: 0 0 0 .18rem rgba(37, 193, 95, .18);
+    }
+    .composer-mic {
+        position: absolute;
+        right: .75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #777;
+        font-size: 1.35rem;
+        pointer-events: none;
+    }
+    .composer-submit {
+        margin-top: .65rem;
+    }
+    .selected-file-name {
+        min-height: 1.25rem;
+        padding-left: calc(44px + .7rem);
+    }
+    @media (max-width: 575.98px) {
+        .group-composer { padding: .55rem; }
+        .group-composer-row { gap: .45rem; }
+        .composer-icon-btn {
+            width: 40px;
+            height: 40px;
+            flex-basis: 40px;
+            font-size: 1.25rem;
+        }
+        .selected-file-name { padding-left: 0; }
+    }
+</style>
+
+<div class="page-card p-3 p-md-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+        <div>
+            <h1 class="h5 medical-title mb-1">{{ group.group_name }}</h1>
+            <div class="text-secondary small">{{ group_type_label(group.group_type) }} · 成员 {{ members|length }} 人</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-self-md-start">
+            {% if group.consultation_id %}
+            <a class="btn btn-sm btn-primary" href="{{ url_for('consultation_detail', consultation_id=group.consultation_id) }}">查看病例</a>
+            {% else %}
+            <a class="btn btn-sm btn-primary" href="{{ url_for('new_consultation', source_group_id=group.id) }}">发起病例会诊</a>
+            {% endif %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('group_settings', group_id=group.id) }}">群设置</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('groups') }}">返回群聊</a>
+        </div>
+    </div>
+
+    <div id="chatPanel" class="chat-panel border rounded p-3 mb-3"
+         data-chat-type="group"
+         data-target-id="{{ group.id }}"
+         data-current-user-id="{{ current_user.id }}"
+         data-current-avatar="{{ current_user.avatar or current_user.name[:1] }}"
+         data-ws-base="{{ chat_ws_base }}"
+         data-token="{{ chat_token }}">
+        {% for message in messages %}
+        <div class="chat-row {% if message.sender_id == current_user.id %}self{% endif %}">
+            {% if message.sender_id != current_user.id %}
+            <div class="avatar-circle">{{ message.sender_name[:1] }}</div>
+            {% endif %}
+            <div class="chat-bubble">
+                {% if message.sender_id != current_user.id %}
+                <div class="fw-semibold small">{{ message.sender_name }} · {{ message.sender_hospital }} · {{ message.sender_department }}</div>
+                {% endif %}
+                {% if message.content %}
+                <div class="content-text">{{ message.content }}</div>
+                {% endif %}
+                {% if message.attachment_path %}
+                <div class="mt-2">
+                    {% if is_image_file(message.attachment_name or message.attachment_path) %}
+                    <img class="img-fluid rounded border mb-2" src="{{ url_for('download_attachment', filename=message.attachment_path) }}" alt="群聊附件">
+                    {% elif is_video_file(message.attachment_name or message.attachment_path) %}
+                    <video class="w-100 rounded border mb-2" controls>
+                        <source src="{{ url_for('download_attachment', filename=message.attachment_path) }}">
+                    </video>
+                    {% endif %}
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_attachment', filename=message.attachment_path) }}">
+                        下载附件：{{ message.attachment_name or "附件" }}
+                    </a>
+                </div>
+                {% endif %}
+                {% if contains_sensitive_terms(message.content) %}
+                <div class="risk-note">本交流仅作临床参考，不作为正式诊断依据。</div>
+                {% endif %}
+                <div class="text-secondary small mt-2">{{ message.send_time }}</div>
+            </div>
+            {% if message.sender_id == current_user.id %}
+            <div class="avatar-circle">{{ current_user.avatar or current_user.name[:1] }}</div>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="text-secondary mb-0">暂无消息。</p>
+        {% endfor %}
+    </div>
+
+    <form id="chatForm" class="group-composer" method="post" enctype="multipart/form-data">
+        <div class="group-composer-row">
+            <button class="composer-icon-btn" type="button" title="语音输入（演示占位）" aria-label="语音输入">
+                <i class="bi bi-volume-up-fill"></i>
+            </button>
+            <div class="composer-input-wrap">
+                <textarea class="composer-input" name="content" rows="1" placeholder="请输入群消息"></textarea>
+                <span class="composer-mic"><i class="bi bi-mic-fill"></i></span>
+            </div>
+            <label class="composer-icon-btn" for="groupAttachment" title="选择图片、视频或文档" aria-label="选择图片、视频或文档">
+                <i class="bi bi-plus-lg"></i>
+            </label>
+        </div>
+        <input class="visually-hidden" id="groupAttachment" type="file" name="group_attachment" accept="image/*,video/*,.pdf">
+        <div id="selectedFileName" class="selected-file-name text-secondary small"></div>
+        <button class="btn btn-primary w-100 composer-submit" type="submit">发送</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chatPanel = document.getElementById("chatPanel");
+const chatForm = document.getElementById("chatForm");
+const textarea = chatForm.querySelector('textarea[name="content"]');
+const fileInput = chatForm.querySelector('input[name="group_attachment"]');
+const selectedFileName = document.getElementById("selectedFileName");
+const wsUrl = `${chatPanel.dataset.wsBase}/chat?token=${encodeURIComponent(chatPanel.dataset.token)}`;
+let chatSocket;
+
+function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    }[char]));
+}
+
+function appendMessage(message) {
+    const currentUserId = Number(chatPanel.dataset.currentUserId);
+    const isSelf = Number(message.sender_id) === currentUserId;
+    const empty = chatPanel.querySelector(".text-secondary.mb-0");
+    if (empty) empty.remove();
+    const avatar = isSelf ? chatPanel.dataset.currentAvatar : String(message.sender_name || "").slice(0, 1);
+    const meta = isSelf ? "" : `<div class="fw-semibold small">${escapeHtml(message.sender_name)} · ${escapeHtml(message.sender_hospital)} · ${escapeHtml(message.sender_department)}</div>`;
+    const row = document.createElement("div");
+    row.className = `chat-row ${isSelf ? "self" : ""}`;
+    row.innerHTML = `
+        ${isSelf ? "" : `<div class="avatar-circle">${escapeHtml(avatar)}</div>`}
+        <div class="chat-bubble">
+            ${meta}
+            <div class="content-text">${escapeHtml(message.content)}</div>
+            <div class="text-secondary small mt-2">${escapeHtml(message.send_time)}</div>
+        </div>
+        ${isSelf ? `<div class="avatar-circle">${escapeHtml(avatar)}</div>` : ""}
+    `;
+    chatPanel.appendChild(row);
+    chatPanel.scrollTop = chatPanel.scrollHeight;
+}
+
+function connectChat() {
+    chatSocket = new WebSocket(wsUrl);
+    chatSocket.addEventListener("open", () => {
+        chatSocket.send(JSON.stringify({
+            type: "join",
+            chat_type: chatPanel.dataset.chatType,
+            target_id: Number(chatPanel.dataset.targetId)
+        }));
+    });
+    chatSocket.addEventListener("message", event => {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "message" && payload.chat_type === "group") {
+            appendMessage(payload.message);
+        }
+    });
+    chatSocket.addEventListener("close", () => {
+        setTimeout(connectChat, 1600);
+    });
+}
+
+function resizeComposerInput() {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 110)}px`;
+}
+
+connectChat();
+chatPanel.scrollTop = chatPanel.scrollHeight;
+resizeComposerInput();
+
+textarea.addEventListener("input", resizeComposerInput);
+
+fileInput.addEventListener("change", () => {
+    selectedFileName.textContent = fileInput.files.length > 0
+        ? `已选择：${fileInput.files[0].name}，点击发送上传`
+        : "";
+});
+
+textarea.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        chatForm.requestSubmit();
+    }
+});
+
+chatForm.addEventListener("submit", event => {
+    if (fileInput.files.length > 0) {
+        if (!warnSensitiveContent(chatForm)) {
+            event.preventDefault();
+        }
+        return;
+    }
+    event.preventDefault();
+    if (!warnSensitiveContent(chatForm)) return;
+    const content = textarea.value.trim();
+    if (!content) return;
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+        chatForm.submit();
+        return;
+    }
+    chatSocket.send(JSON.stringify({
+        type: "message",
+        chat_type: chatPanel.dataset.chatType,
+        target_id: Number(chatPanel.dataset.targetId),
+        content
+    }));
+    textarea.value = "";
+    resizeComposerInput();
+});
+</script>
+{% endblock %}

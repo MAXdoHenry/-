@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - 医联体分级会诊系统{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="h3 medical-title">欢迎 {{ current_user.name }}医生</h1>
+    <p class="text-secondary mb-0">您所属 {{ current_user.hospital_name }}，科室：{{ current_user.department }}</p>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="stat-card p-3">
+            <div class="text-secondary small">我的提问总数</div>
+            <div class="display-6 fw-bold text-primary">{{ stats.my_total }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card p-3">
+            <div class="text-secondary small">待回复数</div>
+            <div class="display-6 fw-bold text-warning">{{ stats.my_pending }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card p-3">
+            <div class="text-secondary small">已回复数</div>
+            <div class="display-6 fw-bold text-success">{{ stats.my_replied }}</div>
+        </div>
+    </div>
+    {% if current_user.hospital_level in [1, 2] %}
+    <div class="col-6 col-lg-3">
+        <div class="stat-card p-3">
+            <div class="text-secondary small">会诊待回复数</div>
+            <div class="display-6 fw-bold text-danger">{{ stats.subordinate_pending }}</div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="page-card p-3 p-md-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">最新 5 条提问</h2>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('my_consultations') }}">查看我的提问</a>
+    </div>
+    {% if latest_consultations %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+            <tr>
+                <th>标题</th>
+                <th>提问医院</th>
+                <th>提问人</th>
+                <th>时间</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for item in latest_consultations %}
+            <tr>
+                <td>{{ item.title }}</td>
+                <td>{{ item.asker_hospital_name }}</td>
+                <td>{{ item.asker_name }}</td>
+                <td>{{ item.create_time }}</td>
+                <td><span class="badge {{ status_class(item.status) }}">{{ item.status }}</span></td>
+                <td><a class="btn btn-sm btn-primary" href="{{ url_for('consultation_detail', consultation_id=item.id) }}">查看详情</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-secondary mb-0">暂无可查看的提问。</p>
+    {% endif %}
+</div>
+{% endblock %}

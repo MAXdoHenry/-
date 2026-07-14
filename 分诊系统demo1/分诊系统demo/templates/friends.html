@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}好友 - 医联体分级会诊系统{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+    <div>
+        <h1 class="h4 medical-title mb-1">好友</h1>
+        <p class="text-secondary mb-0">实名协作通讯录，所有好友关系和操作均留痕。</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-primary" href="{{ url_for('add_friend') }}">添加好友</a>
+        <a class="btn btn-outline-primary" href="{{ url_for('friend_requests') }}">
+            新的朋友
+            {% if pending_count %}<span class="badge text-bg-danger">{{ pending_count }}</span>{% endif %}
+        </a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('friend_group_manager') }}">好友分组管理</a>
+    </div>
+</div>
+
+{% for group_name, friends in grouped_friends.items() %}
+<div class="page-card p-3 p-md-4 mb-3">
+    <h2 class="h5 mb-3">{{ group_name }}</h2>
+    {% if friends %}
+    <div class="row g-3">
+        {% for friend in friends %}
+        <div class="col-12 col-lg-6">
+            <div class="border rounded p-3 h-100 bg-light">
+                <div class="d-flex gap-3">
+                    <div class="avatar-circle">{{ avatar_text(friend) }}</div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold">{{ friend.name }}｜{{ friend.title }}</div>
+                        <div class="text-secondary small">{{ friend.hospital_name }}｜{{ friend.department }}</div>
+                        <div class="text-secondary small">手机号：{{ friend.phone }}｜微信号：{{ friend.wechat_id }}</div>
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            <a class="btn btn-sm btn-primary" href="{{ url_for('private_chat', friend_id=friend.id) }}">发消息</a>
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('friend_profile', friend_id=friend.id) }}">查看资料</a>
+                            <form method="post" action="{{ url_for('move_friend_group', friend_id=friend.id) }}" class="d-flex gap-1">
+                                <input class="form-control form-control-sm" name="friend_group" placeholder="新分组">
+                                <button class="btn btn-sm btn-outline-secondary" type="submit">移动</button>
+                            </form>
+                            <form method="post" action="{{ url_for('delete_friend', friend_id=friend.id) }}" onsubmit="return confirm('确定删除该好友吗？历史消息会继续保留用于医疗审计。')">
+                                <button class="btn btn-sm btn-outline-danger" type="submit">删除好友</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-secondary mb-0">该分组暂无好友。</p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}
