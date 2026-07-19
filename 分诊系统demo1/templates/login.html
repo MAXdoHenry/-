@@ -3,26 +3,109 @@
 {% block title %}登录 - 医联体分级会诊系统{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center align-items-center" style="min-height: 78vh;">
-    <div class="col-12 col-sm-10 col-md-7 col-lg-5">
-        <div class="page-card p-4 p-md-5">
-            <div class="text-center mb-4">
-                <h1 class="h3 medical-title mb-2">医联体分级会诊系统</h1>
-                <p class="text-secondary mb-0">疑难病例分级请教与回复</p>
+<div class="sms-login-screen">
+    <div class="sms-login-panel">
+        <div class="sms-brand">
+            <div class="sms-brand-icon"><i class="bi bi-shield-check"></i></div>
+            <div>
+                <h1 class="sms-title">医联体分级会诊系统</h1>
+                <p class="sms-subtitle">手机号验证码登录</p>
             </div>
-            <form method="post">
-                <div class="mb-3">
-                    <label class="form-label">医生姓名</label>
-                    <input class="form-control form-control-lg" name="name" placeholder="例如：赵医生" required autofocus>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">密码</label>
-                    <input class="form-control form-control-lg" name="password" type="password" placeholder="请输入密码" required>
-                </div>
-                <button class="btn btn-primary btn-lg w-100" type="submit">登录</button>
-                <p class="text-center text-secondary small mt-3 mb-0">演示账号密码均为 123456</p>
-            </form>
         </div>
+
+        <form method="post" class="sms-login-form" id="smsLoginForm">
+            <label class="sms-field">
+                <span>手机号</span>
+                <input name="phone" id="smsPhone" inputmode="tel" autocomplete="tel" value="{{ phone or '' }}" placeholder="输入注册手机号" required autofocus>
+            </label>
+            <label class="sms-field sms-code-field">
+                <span>验证码</span>
+                <input name="sms_code" id="smsCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位验证码" required>
+                <button class="sms-code-btn" id="sendSmsCode" type="button">获取验证码</button>
+            </label>
+            <button class="sms-login-btn" type="submit">登录</button>
+        </form>
+
+        <div class="sms-mini-program-card">
+            <div>
+                <div class="sms-mini-title">微信小程序注册</div>
+                <div class="sms-mini-subtitle">未注册手机号请先完成实名资料绑定</div>
+            </div>
+            <i class="bi bi-phone"></i>
+        </div>
+
+        <p class="sms-demo-note" id="smsDemoNote">演示手机号：1 / 2 / 3 / 4</p>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function initSmsLogin() {
+    const phoneInput = document.getElementById("smsPhone");
+    const codeInput = document.getElementById("smsCode");
+    const sendButton = document.getElementById("sendSmsCode");
+    const note = document.getElementById("smsDemoNote");
+    if (!phoneInput || !codeInput || !sendButton) return;
+
+    let timer = 0;
+    let remaining = 0;
+
+    function setMessage(message, isError = false) {
+        if (!note) return;
+        note.textContent = message;
+        note.classList.toggle("text-danger", isError);
+    }
+
+    function startCountdown(seconds) {
+        remaining = seconds;
+        sendButton.disabled = true;
+        clearInterval(timer);
+        timer = setInterval(() => {
+            remaining -= 1;
+            sendButton.textContent = `${remaining}s`;
+            if (remaining <= 0) {
+                clearInterval(timer);
+                sendButton.disabled = false;
+                sendButton.textContent = "获取验证码";
+            }
+        }, 1000);
+        sendButton.textContent = `${remaining}s`;
+    }
+
+    sendButton.addEventListener("click", async () => {
+        const phone = phoneInput.value.trim();
+        if (!phone) {
+            phoneInput.focus();
+            setMessage("请输入手机号", true);
+            return;
+        }
+        sendButton.disabled = true;
+        sendButton.textContent = "发送中";
+        try {
+            const response = await fetch("{{ url_for('send_auth_code') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phone, scene: "login" })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                throw new Error(data.message || "验证码发送失败");
+            }
+            if (data.demo_code) {
+                codeInput.value = data.demo_code;
+                setMessage(`演示验证码：${data.demo_code}`);
+            } else {
+                setMessage("验证码已发送");
+            }
+            codeInput.focus();
+            startCountdown(60);
+        } catch (error) {
+            sendButton.disabled = false;
+            sendButton.textContent = "获取验证码";
+            setMessage(error.message || "验证码发送失败", true);
+        }
+    });
+})();
+</script>
 {% endblock %}

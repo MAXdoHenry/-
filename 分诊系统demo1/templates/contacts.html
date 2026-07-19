@@ -7,8 +7,19 @@
 {% endblock %}
 
 {% block content %}
+<section class="ai-status-strip">
+    <div class="ai-core">
+        <span class="ai-core-icon"><i class="bi bi-diagram-3-fill"></i></span>
+        <div class="min-w-0">
+            <div class="ai-core-title">协作网络</div>
+            <div class="ai-core-subtitle">好友、群聊与病例协作关系实时可达</div>
+        </div>
+    </div>
+    <span class="live-chip"><span class="live-dot"></span>在线</span>
+</section>
+
 <a class="list-row" href="{{ url_for('friend_requests') }}">
-    <div class="square-avatar">新</div>
+    <div class="square-avatar"><i class="bi bi-person-plus-fill"></i></div>
     <div class="row-main">
         <div class="row-title">
             <span>新的朋友</span>
@@ -18,7 +29,7 @@
     </div>
 </a>
 <a class="list-row" href="{{ url_for('new_group') }}">
-    <div class="square-avatar group-avatar">群</div>
+    <div class="square-avatar group-avatar"><i class="bi bi-people-fill"></i></div>
     <div class="row-main">
         <div class="row-title">发起群聊</div>
         <div class="row-subtitle">从好友中选择成员创建协作群</div>
@@ -29,7 +40,10 @@
 {% if groups %}
     {% for group in groups %}
     <a class="list-row" href="{{ url_for('group_chat', group_id=group.id) }}">
-        <div class="square-avatar group-avatar">群</div>
+        <div class="avatar-wrap">
+            <div class="square-avatar group-avatar"><i class="bi bi-people-fill"></i></div>
+            <span class="presence-dot"></span>
+        </div>
         <div class="row-main">
             <div class="row-title">{{ group.group_name }}</div>
             <div class="row-subtitle">{{ group_type_label(group.group_type) }}｜成员 {{ group.member_count }} 人</div>
@@ -45,7 +59,10 @@
 {% if friends %}
     {% for friend in friends %}
     <a class="list-row" href="{{ url_for('private_chat', friend_id=friend.id) }}">
-        <div class="avatar-circle">{{ avatar_text(friend) }}</div>
+        <div class="avatar-wrap">
+            <div class="avatar-circle">{{ avatar_text(friend) }}</div>
+            <span class="presence-dot"></span>
+        </div>
         <div class="row-main">
             <div class="row-title">{{ friend.name }}｜{{ friend.title }}</div>
             <div class="row-subtitle">{{ friend.hospital_name }}｜{{ friend.department }}</div>

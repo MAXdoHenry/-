@@ -1,36 +1,51 @@
 {% extends "base.html" %}
 
 {% block title %}邀请好友 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}邀请成员{% endblock %}
+{% block header_left %}
+<a class="icon-button" href="{{ url_for('group_settings', group_id=group.id) }}" title="返回成员管理"><i class="bi bi-chevron-left"></i></a>
+{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('group_chat', group_id=group.id) }}" title="返回群聊"><i class="bi bi-chat-dots"></i></a>
+{% endblock %}
 
 {% block content %}
-<div class="page-card p-3 p-md-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h1 class="h4 medical-title mb-1">邀请好友</h1>
-            <p class="text-secondary mb-0">
-                {% if mode == 'case' %}
-                邀请好友加入病例聊天室「{{ group.group_name }}」
-                {% else %}
-                邀请好友加入群聊「{{ group.group_name }}」
-                {% endif %}
-            </p>
+<section class="ai-status-strip">
+    <div class="ai-core">
+        <span class="ai-core-icon"><i class="bi bi-person-plus-fill"></i></span>
+        <div class="min-w-0">
+            <div class="ai-core-title">邀请成员</div>
+            <div class="ai-core-subtitle">{{ group.group_name }}</div>
         </div>
-        <a class="btn btn-outline-secondary" href="{{ url_for('group_chat', group_id=group.id) }}">返回</a>
     </div>
+    <span class="live-chip"><span class="live-dot"></span>{{ friends|length }} 位可选</span>
+</section>
+
+<div class="page-card p-3 p-md-4">
     <form method="post">
-        <div class="border rounded p-3 bg-light mb-3">
+        <div class="border-top mb-3">
             {% for friend in friends %}
-            <div class="form-check">
+            <label class="list-row selectable-row px-0" for="invite_{{ friend.id }}">
+                <div class="avatar-wrap">
+                    <div class="avatar-circle">{{ friend.avatar or friend.name[:1] }}</div>
+                    <span class="presence-dot"></span>
+                </div>
+                <div class="row-main">
+                    <div class="row-title"><span>{{ friend.name }}｜{{ friend.title }}</span></div>
+                    <div class="row-subtitle">{{ friend.hospital_name }}｜{{ friend.department }}</div>
+                </div>
                 <input class="form-check-input" type="checkbox" name="member_ids" value="{{ friend.id }}" id="invite_{{ friend.id }}">
-                <label class="form-check-label" for="invite_{{ friend.id }}">
-                    {{ friend.name }}｜{{ friend.title }}｜{{ friend.hospital_name }}｜{{ friend.department }}
-                </label>
-            </div>
+            </label>
             {% else %}
-            <p class="text-secondary mb-0">暂无好友可邀请。</p>
+            <div class="p-4 text-center text-secondary">
+                暂无好友可邀请。
+            </div>
             {% endfor %}
         </div>
-        <button class="btn btn-primary" type="submit">确认邀请</button>
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2 me-1"></i>确认邀请</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('group_settings', group_id=group.id) }}">返回成员管理</a>
+        </div>
     </form>
 </div>
 {% endblock %}

@@ -55,6 +55,7 @@ import hmac
 import hashlib
 import json
 import re
+import secrets
 import sqlite3
 import time
 import base64
@@ -92,6 +93,9 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 TIME_FORMAT = "%Y-%m-%d %H:%M"
 CHAT_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 8
 CHAT_SECRET_KEY = "demo-secret-key-for-hospital-consult-system"
+SMS_CODE_TTL_SECONDS = 5 * 60
+SMS_CODE_SCENES = {"login", "register"}
+DEMO_SMS_CHANNELS = {"web", "wechat_mini_program"}
 ALLOWED_ATTACHMENT_EXTENSIONS = {
     "png",
     "jpg",
@@ -410,13 +414,36 @@ def init_database(db_path: Optional[Path] = None) -> None:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS verification_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT,
+                    code TEXT,
+                    scene TEXT,
+                    channel TEXT,
+                    wechat_openid TEXT,
+                    create_time TEXT,
+                    expires_at INTEGER,
+                    used_time TEXT,
+                    request_ip TEXT
+                )
+                """
+            )
 
             # 兼容旧数据库：给 users 表补充实名社交和专家扩展字段。
             user_columns = [
                 row["name"]
                 for row in conn.execute("PRAGMA table_info(users)").fetchall()
             ]
-            for column_name in ["phone", "wechat_id", "title", "avatar"]:
+            for column_name in [
+                "phone",
+                "wechat_id",
+                "title",
+                "avatar",
+                "wechat_openid",
+                "register_source",
+            ]:
                 if column_name not in user_columns:
                     conn.execute(
                         f"ALTER TABLE users ADD COLUMN {column_name} TEXT DEFAULT ''"
@@ -546,6 +573,56 @@ def init_database(db_path: Optional[Path] = None) -> None:
                 """,
                 friend_relations,
             )
+            test_friend_groups = [
+                (1200 + user_id, user_id, "群聊测试成员", "2026-06-25 10:00")
+                for user_id in range(1, 5)
+            ]
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO friend_groups (id, user_id, group_name, create_time)
+                VALUES (?, ?, ?, ?)
+                """,
+                test_friend_groups,
+            )
+            test_friend_relations = []
+            relation_id = 5000
+            for base_user_id in range(1, 5):
+                for test_user_id in range(101, 111):
+                    test_friend_relations.append(
+                        (
+                            relation_id,
+                            base_user_id,
+                            test_user_id,
+                            "accepted",
+                            "群聊测试成员",
+                            "群聊测试成员",
+                            "2026-06-25 10:00",
+                            "2026-06-25 10:00",
+                        )
+                    )
+                    relation_id += 1
+                    test_friend_relations.append(
+                        (
+                            relation_id,
+                            test_user_id,
+                            base_user_id,
+                            "accepted",
+                            "群聊测试成员",
+                            "测试成员",
+                            "2026-06-25 10:00",
+                            "2026-06-25 10:00",
+                        )
+                    )
+                    relation_id += 1
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO friend_relations (
+                    id, user_id, friend_id, status, apply_msg, friend_group, create_time, update_time
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                test_friend_relations,
+            )
 
             demo_groups = [
                 (1, "心内科病例讨论群", "case", 1, "2026-06-25 09:20", "心内科疑难病例讨论与会诊协作", 2),
@@ -578,6 +655,89 @@ def init_database(db_path: Optional[Path] = None) -> None:
                 demo_members,
             )
 
+            # 群聊测试数据：10 个测试医生 + 1 个多人测试群，方便压测成员列表和群消息。
+            test_users = [
+                (101, "测试医生01", "", 1, "心内科", "医生"),
+                (102, "测试医生02", "", 2, "急诊科", "医生"),
+                (103, "测试医生03", "", 3, "骨科", "医生"),
+                (104, "测试医生04", "", 4, "全科", "医生"),
+                (105, "测试医生05", "", 1, "影像科", "医生"),
+                (106, "测试医生06", "", 2, "检验科", "医生"),
+                (107, "测试医生07", "", 3, "呼吸科", "医生"),
+                (108, "测试医生08", "", 4, "康复科", "医生"),
+                (109, "测试医生09", "", 1, "神经内科", "医生"),
+                (110, "测试医生10", "", 2, "药学部", "医生"),
+            ]
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO users
+                    (id, name, password, hospital_id, department, role)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                test_users,
+            )
+            test_profiles = [
+                ("18800001001", "test1001", "主治医师", "测1", 101),
+                ("18800001002", "test1002", "主治医师", "测2", 102),
+                ("18800001003", "test1003", "住院医师", "测3", 103),
+                ("18800001004", "test1004", "住院医师", "测4", 104),
+                ("18800001005", "test1005", "主管技师", "测5", 105),
+                ("18800001006", "test1006", "主管技师", "测6", 106),
+                ("18800001007", "test1007", "主治医师", "测7", 107),
+                ("18800001008", "test1008", "康复治疗师", "测8", 108),
+                ("18800001009", "test1009", "副主任医师", "测9", 109),
+                ("18800001010", "test1010", "主管药师", "测10", 110),
+            ]
+            conn.executemany(
+                """
+                UPDATE users
+                SET phone = ?, wechat_id = ?, title = ?, avatar = ?
+                WHERE id = ?
+                """,
+                test_profiles,
+            )
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO friend_groups (id, user_id, group_name, create_time)
+                VALUES (?, ?, '测试成员', '2026-06-25 10:00')
+                """,
+                [(1000 + user_id, user_id) for user_id in range(101, 111)],
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO groups (
+                    id, group_name, group_type, creator_id, create_time, description, consultation_id
+                )
+                VALUES (20, '群聊测试群', 'work', 1, '2026-06-25 10:00', '用于测试多人群聊、成员管理和消息滚动。', NULL)
+                """
+            )
+            test_group_members = [
+                (2000, 20, 1, "2026-06-25 10:00", "owner", "2026-06-25 10:00"),
+                (2001, 20, 2, "2026-06-25 10:00", "member", "2026-06-25 10:00"),
+                (2002, 20, 3, "2026-06-25 10:00", "member", "2026-06-25 10:00"),
+                (2003, 20, 4, "2026-06-25 10:00", "member", "2026-06-25 10:00"),
+            ]
+            test_group_members.extend(
+                (
+                    2000 + user_id,
+                    20,
+                    user_id,
+                    "2026-06-25 10:00",
+                    "member",
+                    "2026-06-25 10:00",
+                )
+                for user_id in range(101, 111)
+            )
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO group_members (
+                    id, group_id, user_id, join_time, role, last_read_time
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                test_group_members,
+            )
+
             demo_private_messages = [
                 (1, 4, 2, "李医生您好，社区这边有位老人血压控制不好，想请您帮忙看一下。", "2026-06-25 09:05", 1, 0),
                 (2, 2, 4, "可以，先把既往用药、血压记录和肾功能结果发来。", "2026-06-25 09:08", 1, 0),
@@ -598,6 +758,31 @@ def init_database(db_path: Optional[Path] = None) -> None:
                 (2, 1, 2, "李医生", "区第一人民医院（二甲）", "心内科", "我已补充患者术后活动耐量和复查计划。", "2026-06-25 09:28", 0),
                 (3, 2, 4, "赵医生", "街道社区卫生服务中心", "全科", "社区近期会同步整理转诊患者的随访数据。", "2026-06-25 09:35", 0),
             ]
+            test_group_messages = [
+                (
+                    3000 + idx,
+                    20,
+                    user_id,
+                    f"测试医生{idx:02d}",
+                    hospital_name,
+                    department,
+                    f"群聊测试消息 {idx:02d}：用于检查多人头像、消息滚动和实时推送。",
+                    f"2026-06-25 10:{idx:02d}",
+                    0,
+                )
+                for idx, user_id, hospital_name, department in [
+                    (1, 101, "市中心医院（三甲）", "心内科"),
+                    (2, 102, "区第一人民医院（二甲）", "急诊科"),
+                    (3, 103, "区第二人民医院（二甲）", "骨科"),
+                    (4, 104, "街道社区卫生服务中心", "全科"),
+                    (5, 105, "市中心医院（三甲）", "影像科"),
+                    (6, 106, "区第一人民医院（二甲）", "检验科"),
+                    (7, 107, "区第二人民医院（二甲）", "呼吸科"),
+                    (8, 108, "街道社区卫生服务中心", "康复科"),
+                    (9, 109, "市中心医院（三甲）", "神经内科"),
+                    (10, 110, "区第一人民医院（二甲）", "药学部"),
+                ]
+            ]
             conn.executemany(
                 """
                 INSERT OR IGNORE INTO group_messages (
@@ -607,6 +792,16 @@ def init_database(db_path: Optional[Path] = None) -> None:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 demo_group_messages,
+            )
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO group_messages (
+                    id, group_id, sender_id, sender_name, sender_hospital,
+                    sender_department, content, send_time, is_deleted
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                test_group_messages,
             )
 
             sample_consultations = [
@@ -708,6 +903,8 @@ def get_user_with_hospital(user_id: int) -> Optional[Dict[str, Any]]:
                 u.name AS name,
                 u.phone AS phone,
                 u.wechat_id AS wechat_id,
+                u.wechat_openid AS wechat_openid,
+                u.register_source AS register_source,
                 u.title AS title,
                 u.avatar AS avatar,
                 u.department AS department,
@@ -768,6 +965,270 @@ def update_user_profile(
             )
     finally:
         conn.close()
+
+
+def normalize_phone(phone: str) -> str:
+    """统一手机号格式；演示账号允许 1/2/3/4 这类短号码。"""
+    return re.sub(r"[\s\-]", "", (phone or "").strip())
+
+
+def valid_phone(phone: str) -> bool:
+    """基础手机号校验。生产环境可改成严格大陆手机号或医院统一身份号规则。"""
+    return bool(re.fullmatch(r"\+?\d{1,20}", phone or ""))
+
+
+def get_user_by_phone(phone: str) -> Optional[Dict[str, Any]]:
+    """按手机号查找医生。"""
+    phone = normalize_phone(phone)
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE phone = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (phone,),
+        ).fetchone()
+        if row is None:
+            return None
+        return get_user_with_hospital(row["id"])
+    finally:
+        conn.close()
+
+
+def get_hospitals() -> List[sqlite3.Row]:
+    """注册资料使用：查询可选择医院。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT id, name, level
+            FROM hospitals
+            ORDER BY level, id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def generate_sms_code() -> str:
+    """生成 6 位短信验证码。"""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def send_sms_code(phone: str, code: str, scene: str, channel: str) -> None:
+    """
+    发送短信验证码。
+
+    当前项目没有接入短信厂商，先写入服务日志；生产环境只替换这里即可。
+    """
+    print(
+        f"[DEMO SMS] channel={channel} scene={scene} phone={phone} code={code}",
+        flush=True,
+    )
+
+
+def issue_verification_code(
+    phone: str,
+    scene: str,
+    channel: str = "web",
+    wechat_openid: str = "",
+    request_ip: str = "",
+) -> str:
+    """签发短信验证码并持久化，返回演示验证码。"""
+    phone = normalize_phone(phone)
+    scene = (scene or "login").strip()
+    channel = (channel or "web").strip()
+    wechat_openid = (wechat_openid or "").strip()
+    if scene not in SMS_CODE_SCENES:
+        raise ValueError("验证码用途不正确")
+    if channel not in DEMO_SMS_CHANNELS:
+        raise ValueError("验证码渠道不正确")
+    if not valid_phone(phone):
+        raise ValueError("请输入正确的手机号")
+
+    if scene == "login" and get_user_by_phone(phone) is None:
+        raise ValueError("该手机号尚未注册，请先在微信小程序完成注册")
+    if scene == "register" and get_user_by_phone(phone) is not None:
+        raise ValueError("该手机号已注册，请直接登录")
+
+    code = generate_sms_code()
+    expires_at = int(time.time()) + SMS_CODE_TTL_SECONDS
+    conn = get_connection()
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO verification_codes (
+                    phone, code, scene, channel, wechat_openid,
+                    create_time, expires_at, used_time, request_ip
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, '', ?)
+                """,
+                (
+                    phone,
+                    code,
+                    scene,
+                    channel,
+                    wechat_openid,
+                    now_text(),
+                    expires_at,
+                    request_ip,
+                ),
+            )
+    finally:
+        conn.close()
+    send_sms_code(phone, code, scene, channel)
+    return code
+
+
+def verify_sms_code(phone: str, code: str, scene: str) -> Optional[str]:
+    """校验短信验证码；成功返回 None，失败返回提示。"""
+    phone = normalize_phone(phone)
+    code = (code or "").strip()
+    scene = (scene or "login").strip()
+    if not valid_phone(phone):
+        return "请输入正确的手机号"
+    if not re.fullmatch(r"\d{6}", code):
+        return "请输入 6 位短信验证码"
+    if scene not in SMS_CODE_SCENES:
+        return "验证码用途不正确"
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, expires_at
+            FROM verification_codes
+            WHERE phone = ?
+              AND code = ?
+              AND scene = ?
+              AND used_time = ''
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (phone, code, scene),
+        ).fetchone()
+        if row is None:
+            return "验证码不正确或已使用"
+        if int(row["expires_at"]) < int(time.time()):
+            return "验证码已过期，请重新获取"
+        with conn:
+            conn.execute(
+                """
+                UPDATE verification_codes
+                SET used_time = ?
+                WHERE id = ?
+                """,
+                (now_text(), row["id"]),
+            )
+    finally:
+        conn.close()
+    return None
+
+
+def register_user_by_sms(
+    phone: str,
+    name: str,
+    hospital_id: int,
+    department: str,
+    title: str,
+    wechat_id: str = "",
+    avatar: str = "",
+    wechat_openid: str = "",
+    register_source: str = "wechat_mini_program",
+) -> Dict[str, Any]:
+    """小程序注册：验证码校验后创建医生实名账号。"""
+    phone = normalize_phone(phone)
+    name = (name or "").strip()[:30]
+    department = (department or "").strip()[:30]
+    title = (title or "医生").strip()[:30]
+    wechat_id = (wechat_id or "").strip()[:30]
+    avatar = ((avatar or name[:1] or "医").strip())[:2]
+    wechat_openid = (wechat_openid or "").strip()[:80]
+    register_source = (register_source or "wechat_mini_program").strip()[:30]
+    if not valid_phone(phone):
+        raise ValueError("请输入正确的手机号")
+    if not name:
+        raise ValueError("真实姓名不能为空")
+    if get_user_by_phone(phone) is not None:
+        raise ValueError("该手机号已注册，请直接登录")
+
+    conn = get_connection()
+    try:
+        hospital = conn.execute(
+            "SELECT id FROM hospitals WHERE id = ?",
+            (hospital_id,),
+        ).fetchone()
+        if hospital is None:
+            raise ValueError("请选择有效医院")
+        with conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO users (
+                    name, password, hospital_id, department, role,
+                    phone, wechat_id, title, avatar, wechat_openid, register_source
+                )
+                VALUES (?, '', ?, ?, '医生', ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    hospital_id,
+                    department,
+                    phone,
+                    wechat_id,
+                    title,
+                    avatar,
+                    wechat_openid,
+                    register_source,
+                ),
+            )
+            user_id = int(cursor.lastrowid)
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO friend_groups (user_id, group_name, create_time)
+                VALUES (?, '我的好友', ?)
+                """,
+                (user_id, now_text()),
+            )
+    finally:
+        conn.close()
+
+    user = get_user_with_hospital(user_id)
+    if user is None:
+        raise ValueError("注册失败，请稍后重试")
+    write_operation_log(user_id, "register", f"通过 {register_source} 注册账号")
+    return user
+
+
+def request_auth_value(key: str, default: str = "") -> str:
+    """兼容表单提交和小程序 JSON 请求的取值。"""
+    payload = request.get_json(silent=True) if request.is_json else None
+    if isinstance(payload, dict) and key in payload:
+        value = payload.get(key)
+    else:
+        value = request.form.get(key, default)
+    return str(value if value is not None else default).strip()
+
+
+def public_user_payload(user: Dict[str, Any]) -> Dict[str, Any]:
+    """返回给小程序/前端的安全用户字段。"""
+    return {
+        "id": user["id"],
+        "name": user["name"],
+        "phone": user["phone"],
+        "wechat_id": user["wechat_id"],
+        "title": user["title"],
+        "avatar": user["avatar"],
+        "department": user["department"],
+        "role": user["role"],
+        "hospital_id": user["hospital_id"],
+        "hospital_name": user["hospital_name"],
+        "hospital_level": user["hospital_level"],
+    }
 
 
 def authenticate_user(name: str, password: str) -> Optional[Dict[str, Any]]:
@@ -2099,6 +2560,47 @@ def invite_users_to_group(group_id: int, inviter_id: int, user_ids: List[int]) -
     return added
 
 
+def remove_group_member(group_id: int, actor_id: int, target_user_id: int) -> str:
+    """群主移除成员；历史消息保留，不做物理删除。"""
+    actor_role = get_group_role(group_id, actor_id)
+    if actor_role != "owner":
+        return "只有群主可以移除群成员"
+    if actor_id == target_user_id:
+        return "群主不能在成员管理中移除自己，请使用退出群聊"
+
+    conn = get_connection()
+    try:
+        with conn:
+            target = conn.execute(
+                """
+                SELECT role
+                FROM group_members
+                WHERE group_id = ? AND user_id = ?
+                """,
+                (group_id, target_user_id),
+            ).fetchone()
+            if target is None:
+                return "该用户已经不在群内"
+            if target["role"] == "owner":
+                return "不能移除群主"
+            conn.execute(
+                """
+                DELETE FROM group_members
+                WHERE group_id = ? AND user_id = ?
+                """,
+                (group_id, target_user_id),
+            )
+    finally:
+        conn.close()
+
+    write_operation_log(
+        actor_id,
+        "remove_group_member",
+        f"从群 {group_id} 移除成员 {target_user_id}",
+    )
+    return "成员已移出群聊，历史消息继续保留"
+
+
 def leave_group(group_id: int, user_id: int) -> str:
     """退出群聊；如果当前用户是群主，自动转让给下一位群成员后再退出。"""
     role = get_group_role(group_id, user_id)
@@ -2301,6 +2803,9 @@ app = Flask(__name__) if Flask is not None else None
 if app is not None:
     # Demo 用固定密钥即可；真实系统应从环境变量读取。
     app.secret_key = "demo-secret-key-for-hospital-consult-system"
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.jinja_env.auto_reload = True
+    init_database()
 
 
 def get_current_user() -> Optional[Dict[str, Any]]:
@@ -2359,25 +2864,185 @@ if app is not None:
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        """登录页：演示版只校验医生姓名和明文密码。"""
+        """短信验证码登录。"""
         if request.method == "POST":
-            name = request.form.get("name", "").strip()
-            password = request.form.get("password", "").strip()
-            if not name or not password:
-                flash("请输入医生姓名和密码", "danger")
-                return render_template("login.html")
+            phone = normalize_phone(request.form.get("phone", ""))
+            sms_code = request.form.get("sms_code", "").strip()
+            error = verify_sms_code(phone, sms_code, "login")
+            if error:
+                flash(error, "danger")
+                return render_template("login.html", phone=phone)
 
-            user = authenticate_user(name, password)
+            user = get_user_by_phone(phone)
             if user is None:
-                flash("登录失败，请检查医生姓名或密码", "danger")
-                return render_template("login.html")
+                flash("该手机号尚未注册，请先在微信小程序完成注册", "danger")
+                return render_template("login.html", phone=phone)
 
             session.clear()
             session["user_id"] = user["id"]
+            write_operation_log(
+                user["id"],
+                "sms_login",
+                "通过短信验证码登录",
+                request.remote_addr or "",
+            )
             flash(f"欢迎登录，{user['name']}医生", "success")
             return redirect(request.args.get("next") or url_for("home"))
 
-        return render_template("login.html")
+        return render_template("login.html", phone="")
+
+    @app.route("/auth/send-code", methods=["POST"])
+    def send_auth_code():
+        """网页登录使用：发送短信验证码。"""
+        phone = request_auth_value("phone")
+        scene = request_auth_value("scene", "login")
+        try:
+            code = issue_verification_code(
+                phone=phone,
+                scene=scene,
+                channel="web",
+                request_ip=request.remote_addr or "",
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 400
+        return jsonify(
+            {
+                "ok": True,
+                "message": "验证码已发送",
+                "expires_in": SMS_CODE_TTL_SECONDS,
+                "demo_code": code,
+            }
+        )
+
+    @app.route("/api/wechat-mini/hospitals")
+    def api_wechat_mini_hospitals():
+        """微信小程序注册页使用：医院选项。"""
+        return jsonify(
+            {
+                "ok": True,
+                "hospitals": [
+                    {"id": item["id"], "name": item["name"], "level": item["level"]}
+                    for item in get_hospitals()
+                ],
+            }
+        )
+
+    @app.route("/api/wechat-mini/register/code", methods=["POST"])
+    def api_wechat_mini_register_code():
+        """微信小程序注册：获取短信验证码。"""
+        phone = request_auth_value("phone")
+        wechat_openid = (
+            request_auth_value("wechat_openid")
+            or request_auth_value("openid")
+            or request_auth_value("wx_code")
+        )
+        try:
+            code = issue_verification_code(
+                phone=phone,
+                scene="register",
+                channel="wechat_mini_program",
+                wechat_openid=wechat_openid,
+                request_ip=request.remote_addr or "",
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 400
+        return jsonify(
+            {
+                "ok": True,
+                "message": "注册验证码已发送",
+                "expires_in": SMS_CODE_TTL_SECONDS,
+                "demo_code": code,
+            }
+        )
+
+    @app.route("/api/wechat-mini/register", methods=["POST"])
+    def api_wechat_mini_register():
+        """微信小程序注册：验证码通过后创建医生账号。"""
+        phone = normalize_phone(request_auth_value("phone"))
+        sms_code = request_auth_value("sms_code") or request_auth_value("code")
+        error = verify_sms_code(phone, sms_code, "register")
+        if error:
+            return jsonify({"ok": False, "message": error}), 400
+        try:
+            hospital_id = int(request_auth_value("hospital_id", "0"))
+            user = register_user_by_sms(
+                phone=phone,
+                name=request_auth_value("name"),
+                hospital_id=hospital_id,
+                department=request_auth_value("department"),
+                title=request_auth_value("title", "医生"),
+                wechat_id=request_auth_value("wechat_id"),
+                avatar=request_auth_value("avatar"),
+                wechat_openid=(
+                    request_auth_value("wechat_openid")
+                    or request_auth_value("openid")
+                    or request_auth_value("wx_code")
+                ),
+                register_source="wechat_mini_program",
+            )
+        except (TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 400
+
+        session.clear()
+        session["user_id"] = user["id"]
+        return jsonify(
+            {
+                "ok": True,
+                "message": "注册成功",
+                "user": public_user_payload(user),
+                "chat_token": sign_chat_token(user["id"]),
+            }
+        )
+
+    @app.route("/api/wechat-mini/login/code", methods=["POST"])
+    def api_wechat_mini_login_code():
+        """微信小程序验证码登录：获取短信验证码。"""
+        phone = request_auth_value("phone")
+        try:
+            code = issue_verification_code(
+                phone=phone,
+                scene="login",
+                channel="wechat_mini_program",
+                request_ip=request.remote_addr or "",
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 400
+        return jsonify(
+            {
+                "ok": True,
+                "message": "登录验证码已发送",
+                "expires_in": SMS_CODE_TTL_SECONDS,
+                "demo_code": code,
+            }
+        )
+
+    @app.route("/api/wechat-mini/login", methods=["POST"])
+    def api_wechat_mini_login():
+        """微信小程序验证码登录。"""
+        phone = normalize_phone(request_auth_value("phone"))
+        sms_code = request_auth_value("sms_code") or request_auth_value("code")
+        error = verify_sms_code(phone, sms_code, "login")
+        if error:
+            return jsonify({"ok": False, "message": error}), 400
+        user = get_user_by_phone(phone)
+        if user is None:
+            return jsonify({"ok": False, "message": "该手机号尚未注册"}), 404
+        session.clear()
+        session["user_id"] = user["id"]
+        write_operation_log(
+            user["id"],
+            "sms_login",
+            "通过微信小程序短信验证码登录",
+            request.remote_addr or "",
+        )
+        return jsonify(
+            {
+                "ok": True,
+                "message": "登录成功",
+                "user": public_user_payload(user),
+                "chat_token": sign_chat_token(user["id"]),
+            }
+        )
 
     @app.route("/logout")
     def logout():
@@ -2415,16 +3080,30 @@ if app is not None:
     @app.route("/discover")
     @login_required
     def discover(current_user: Dict[str, Any]):
-        """发现：展示可见的他人提问和统计信息。"""
+        """回信：展示我的提问、我的待回复和可处理的他人提问。"""
         stats = get_dashboard_stats(current_user)
+        my_consultations = get_my_consultations(current_user["id"])
+        my_pending_consultations = [
+            item for item in my_consultations if item["status"] == "待回复"
+        ]
+        my_replied_consultations = [
+            item for item in my_consultations if item["status"] == "已回复"
+        ]
         visible_consultations = get_subordinate_consultations(
             current_user=current_user,
             limit=20,
         )
+        actionable_consultations = [
+            item for item in visible_consultations if item["status"] == "待回复"
+        ]
         return render_template(
             "discover.html",
             stats=stats,
+            my_consultations=my_consultations,
+            my_pending_consultations=my_pending_consultations,
+            my_replied_consultations=my_replied_consultations,
             visible_consultations=visible_consultations,
+            actionable_consultations=actionable_consultations,
         )
 
     @app.route("/me")
@@ -2605,10 +3284,16 @@ if app is not None:
     @login_required
     def friends(current_user: Dict[str, Any]):
         """好友列表：按分组展示实名好友。"""
+        grouped_friends = get_friends_grouped(current_user["id"])
+        friend_count = sum(len(items) for items in grouped_friends.values())
+        active_group_count = sum(1 for items in grouped_friends.values() if items)
+        pending_count = len(get_pending_friend_requests(current_user["id"]))
         return render_template(
             "friends.html",
-            grouped_friends=get_friends_grouped(current_user["id"]),
-            pending_count=len(get_pending_friend_requests(current_user["id"])),
+            grouped_friends=grouped_friends,
+            friend_count=friend_count,
+            active_group_count=active_group_count,
+            pending_count=pending_count,
         )
 
     @app.route("/friends/add", methods=["GET", "POST"])
@@ -2867,7 +3552,7 @@ if app is not None:
     @app.route("/groups/<int:group_id>/settings", methods=["GET", "POST"])
     @login_required
     def group_settings(current_user: Dict[str, Any], group_id: int):
-        """群设置：查看成员，群主可修改群名称和简介。"""
+        """群设置：查看成员，群主可修改群资料和移除成员。"""
         if not is_group_member(group_id, current_user["id"]):
             flash("您不是该群成员", "danger")
             return redirect(url_for("groups"))
@@ -2907,6 +3592,20 @@ if app is not None:
             current_role=role,
         )
 
+    @app.route("/groups/<int:group_id>/members/<int:user_id>/remove", methods=["POST"])
+    @login_required
+    def group_remove_member(current_user: Dict[str, Any], group_id: int, user_id: int):
+        """群主从群聊中移除成员。"""
+        if not is_group_member(group_id, current_user["id"]):
+            flash("您不是该群成员", "danger")
+            return redirect(url_for("groups"))
+        group = get_group_detail(group_id)
+        if group is None:
+            abort(404)
+        message = remove_group_member(group_id, current_user["id"], user_id)
+        flash(message, "success" if message.startswith("成员已") else "danger")
+        return redirect(url_for("group_settings", group_id=group_id))
+
     @app.route("/groups/<int:group_id>/invite", methods=["GET", "POST"])
     @login_required
     def group_invite(current_user: Dict[str, Any], group_id: int):
@@ -2914,6 +3613,9 @@ if app is not None:
         if not is_group_member(group_id, current_user["id"]):
             flash("您不是该群成员", "danger")
             return redirect(url_for("groups"))
+        group = get_group_detail(group_id)
+        if group is None:
+            abort(404)
         if request.method == "POST":
             member_ids = [
                 int(value)
@@ -2923,10 +3625,16 @@ if app is not None:
             added = invite_users_to_group(group_id, current_user["id"], member_ids)
             flash(f"已邀请 {added} 名好友入群", "success")
             return redirect(url_for("group_settings", group_id=group_id))
+        existing_user_ids = set(get_group_user_ids(group_id))
+        available_friends = [
+            friend
+            for friend in get_friends(current_user["id"])
+            if friend["id"] not in existing_user_ids
+        ]
         return render_template(
             "invite_friends.html",
-            group=get_group_detail(group_id),
-            friends=get_friends(current_user["id"]),
+            group=group,
+            friends=available_friends,
             mode="group",
         )
 

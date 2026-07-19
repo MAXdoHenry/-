@@ -7,32 +7,49 @@
 {% endblock %}
 
 {% block content %}
+<section class="ai-status-strip">
+    <div class="ai-core">
+        <span class="ai-core-icon"><i class="bi bi-cpu-fill"></i></span>
+        <div class="min-w-0">
+            <div class="ai-core-title">AI 会诊协同中</div>
+            <div class="ai-core-subtitle">{{ threads|length }} 个会话保持同步，消息实时送达</div>
+        </div>
+    </div>
+    <span class="live-chip"><span class="live-dot"></span>实时在线</span>
+</section>
+
 <div class="section-band">会话</div>
 
 {% if threads %}
     {% for thread in threads %}
-    <a class="list-row" href="{% if thread.kind == 'private' %}{{ url_for('private_chat', friend_id=thread.target_id) }}{% else %}{{ url_for('group_chat', group_id=thread.target_id) }}{% endif %}">
-        <div class="square-avatar {% if thread.kind == 'group' %}group-avatar{% endif %}">
-            {{ thread.avatar }}
+    <a class="list-row conversation-row" href="{% if thread.kind == 'private' %}{{ url_for('private_chat', friend_id=thread.target_id) }}{% else %}{{ url_for('group_chat', group_id=thread.target_id) }}{% endif %}">
+        <div class="avatar-wrap">
+            <div class="square-avatar {% if thread.kind == 'group' %}group-avatar{% endif %}">
+                {{ thread.avatar }}
+            </div>
+            <span class="presence-dot"></span>
         </div>
         <div class="row-main">
             <div class="row-title">
                 <span>{{ thread.title }}</span>
-                {% if thread.unread_count %}
-                <span class="badge rounded-pill text-bg-danger">{{ thread.unread_count }}</span>
-                {% endif %}
+                <span class="badge text-bg-light">{% if thread.kind == 'private' %}<i class="bi bi-person-fill"></i>{% else %}<i class="bi bi-people-fill"></i>{% endif %}</span>
             </div>
-            <div class="row-subtitle">{{ thread.last_message }}</div>
+            <div class="row-subtitle">{{ thread.last_message or "暂无消息" }}</div>
         </div>
-        <div class="row-meta">{{ thread.last_time }}</div>
+        <div class="row-meta">
+            <div>{{ thread.last_time }}</div>
+            {% if thread.unread_count %}
+            <span class="badge rounded-pill text-bg-danger mt-2">{{ thread.unread_count }}</span>
+            {% endif %}
+        </div>
     </a>
     {% endfor %}
 {% else %}
 <div class="p-4 text-center text-secondary">
-    暂无会话。可以先添加好友或新建群聊。
+    暂无会话。
     <div class="d-flex justify-content-center gap-2 mt-3">
-        <a class="btn btn-primary btn-sm" href="{{ url_for('add_friend') }}">添加好友</a>
-        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('new_group') }}">新建群聊</a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('add_friend') }}"><i class="bi bi-person-plus me-1"></i>添加好友</a>
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('new_group') }}"><i class="bi bi-people me-1"></i>新建群聊</a>
     </div>
 </div>
 {% endif %}

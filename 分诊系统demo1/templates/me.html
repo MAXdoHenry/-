@@ -3,34 +3,44 @@
 {% block title %}我 - 医联体分级会诊系统{% endblock %}
 {% block page_title %}我{% endblock %}
 {% block header_actions %}
-<a class="icon-button" href="{{ url_for('logout') }}" title="退出登录">⎋</a>
+<a class="icon-button" href="{{ url_for('logout') }}" title="退出登录"><i class="bi bi-box-arrow-right"></i></a>
 {% endblock %}
 
 {% block content %}
 <section class="profile-hero">
-    <div>
-        <div class="h3 fw-bold mb-2">{{ current_user.name }}（{{ current_user.title }}）</div>
-        <div>{{ current_user.hospital_name }}</div>
-        <div class="small opacity-75">{{ current_user.department }}｜{{ current_user.role }}</div>
-        <a class="btn btn-light btn-sm mt-3" href="{{ url_for('edit_profile') }}">填写个人信息</a>
+    <div class="profile-info">
+        <div class="profile-signal"><span class="live-dot"></span>AI 协同档案已同步</div>
+        <div class="profile-name">{{ current_user.name }}（{{ current_user.title }}）</div>
+        <div class="profile-meta-grid">
+            <div class="profile-meta-item"><i class="bi bi-hospital"></i><span>{{ current_user.hospital_name }}</span></div>
+            <div class="profile-meta-item"><i class="bi bi-activity"></i><span>{{ current_user.department }}</span></div>
+            <div class="profile-meta-item"><i class="bi bi-person-badge"></i><span>{{ current_user.role }}</span></div>
+        </div>
+        <a class="btn btn-light btn-sm mt-3" href="{{ url_for('edit_profile') }}"><i class="bi bi-pencil-square me-1"></i>填写个人信息</a>
     </div>
-    <div class="profile-avatar">{{ current_user.avatar or current_user.name[:1] }}</div>
+    <div class="profile-avatar-wrap">
+        <div class="profile-avatar">{{ current_user.avatar or current_user.name[:1] }}</div>
+    </div>
 </section>
 
 <div class="discover-summary">
     <div class="stat-card">
+        <div class="stat-icon"><i class="bi bi-question-circle-fill"></i></div>
         <div class="text-secondary small">发起提问</div>
         <div class="h3 mb-0 text-primary">{{ stats.my_total }}</div>
     </div>
     <div class="stat-card">
+        <div class="stat-icon"><i class="bi bi-hourglass-split"></i></div>
         <div class="text-secondary small">待回复</div>
         <div class="h3 mb-0 text-warning">{{ stats.my_pending }}</div>
     </div>
     <div class="stat-card">
+        <div class="stat-icon"><i class="bi bi-check2-circle"></i></div>
         <div class="text-secondary small">已回复</div>
         <div class="h3 mb-0 text-success">{{ stats.my_replied }}</div>
     </div>
     <div class="stat-card">
+        <div class="stat-icon"><i class="bi bi-lightning-charge-fill"></i></div>
         <div class="text-secondary small">可处理</div>
         <div class="h3 mb-0 text-danger">{{ stats.subordinate_pending }}</div>
     </div>
@@ -38,14 +48,14 @@
 
 <div class="section-band">快捷入口</div>
 <a class="list-row" href="{{ url_for('new_consultation') }}">
-    <div class="square-avatar">问</div>
+    <div class="square-avatar"><i class="bi bi-plus-circle-fill"></i></div>
     <div class="row-main">
         <div class="row-title">发起病例会诊</div>
         <div class="row-subtitle">提交疑难病例并邀请医院或好友协作</div>
     </div>
 </a>
 <a class="list-row" href="{{ url_for('my_consultations') }}">
-    <div class="square-avatar">我</div>
+    <div class="square-avatar"><i class="bi bi-journal-medical"></i></div>
     <div class="row-main">
         <div class="row-title">我的全部提问</div>
         <div class="row-subtitle">查看自己发起的完整提问记录</div>
@@ -56,7 +66,7 @@
 {% if my_consultations %}
     {% for item in my_consultations %}
     <a class="list-row" href="{{ url_for('consultation_detail', consultation_id=item.id) }}">
-        <div class="square-avatar">病</div>
+        <div class="square-avatar"><i class="bi bi-file-medical-fill"></i></div>
         <div class="row-main">
             <div class="row-title">{{ item.title }}</div>
             <div class="row-subtitle">请教：{{ item.target_hospital_name }}｜{{ item.create_time }}</div>
