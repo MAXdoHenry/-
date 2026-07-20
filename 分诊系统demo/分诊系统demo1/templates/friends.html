@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}好友 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}好友{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('add_friend') }}" title="添加好友"><i class="bi bi-person-plus"></i></a>
+{% endblock %}
+
+{% block content %}
+<section class="ai-status-strip friends-hero">
+    <div class="ai-core">
+        <span class="ai-core-icon"><i class="bi bi-person-lines-fill"></i></span>
+        <div class="min-w-0">
+            <div class="ai-core-title">实名协作通讯录</div>
+            <div class="ai-core-subtitle">好友关系、分组调整与删除操作全程留痕</div>
+        </div>
+    </div>
+    <span class="live-chip"><span class="live-dot"></span>{{ friend_count }} 位</span>
+</section>
+
+<div class="friend-quick-grid">
+    <a class="friend-quick-card primary" href="{{ url_for('add_friend') }}">
+        <span class="friend-quick-icon"><i class="bi bi-person-plus-fill"></i></span>
+        <span class="friend-quick-main">添加好友</span>
+        <span class="friend-quick-sub">手机号或微信号搜索</span>
+    </a>
+    <a class="friend-quick-card" href="{{ url_for('friend_requests') }}">
+        <span class="friend-quick-icon"><i class="bi bi-person-check-fill"></i></span>
+        <span class="friend-quick-main">
+            新的朋友
+            {% if pending_count %}<span class="badge rounded-pill text-bg-danger">{{ pending_count }}</span>{% endif %}
+        </span>
+        <span class="friend-quick-sub">好友申请与验证消息</span>
+    </a>
+    <a class="friend-quick-card" href="{{ url_for('friend_group_manager') }}">
+        <span class="friend-quick-icon"><i class="bi bi-collection-fill"></i></span>
+        <span class="friend-quick-main">分组管理</span>
+        <span class="friend-quick-sub">{{ active_group_count }} 个有效分组</span>
+    </a>
+</div>
+
+<div class="friend-search-shell">
+    <i class="bi bi-search"></i>
+    <input id="friendFilter" type="search" autocomplete="off" placeholder="搜索姓名、医院、科室或分组">
+    <span id="friendFilterCount">{{ friend_count }}</span>
+</div>
+
+{% if friend_count %}
+<div class="friend-index-strip" aria-label="好友分组索引">
+    {% for group_name, friends in grouped_friends.items() if friends %}
+    <a href="#friend-group-{{ loop.index }}">{{ group_name }} <span>{{ friends|length }}</span></a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if friend_count %}
+{% for group_name, friends in grouped_friends.items() if friends %}
+<section id="friend-group-{{ loop.index }}" class="friend-group-block" data-friend-group>
+    <div class="section-band friend-section-heading">
+        <span>{{ group_name }}</span>
+        <span>{{ friends|length }} 位</span>
+    </div>
+
+    {% for friend in friends %}
+    <article class="friend-row" data-friend-search="{{ group_name }} {{ friend.name }} {{ friend.title }} {{ friend.hospital_name }} {{ friend.department }} {{ friend.phone }} {{ friend.wechat_id }}">
+        <a class="friend-row-profile" href="{{ url_for('friend_profile', friend_id=friend.id) }}">
+            <div class="avatar-wrap">
+                <div class="avatar-circle">{{ avatar_text(friend) }}</div>
+                <span class="presence-dot"></span>
+            </div>
+            <div class="row-main">
+                <div class="row-title">
+                    <span>{{ friend.name }}｜{{ friend.title }}</span>
+                    <span class="friend-level-badge">实名</span>
+                </div>
+                <div class="row-subtitle">{{ friend.hospital_name }}｜{{ friend.department }}</div>
+                <div class="friend-contact-line">
+                    <span title="手机号"><i class="bi bi-phone"></i>{{ friend.phone or "未填写" }}</span>
+                    <span title="微信号"><i class="bi bi-wechat"></i>{{ friend.wechat_id or "未填写" }}</span>
+                </div>
+            </div>
+        </a>
+
+        <div class="friend-row-actions">
+            <a class="icon-button friend-action-btn" href="{{ url_for('private_chat', friend_id=friend.id) }}" title="发消息">
+                <i class="bi bi-chat-dots-fill"></i>
+            </a>
+            <a class="icon-button friend-action-btn" href="{{ url_for('friend_profile', friend_id=friend.id) }}" title="查看资料">
+                <i class="bi bi-person-vcard"></i>
+            </a>
+            <div class="dropdown">
+                <button class="icon-button friend-action-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="更多操作">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+                <div class="dropdown-menu dropdown-menu-end friend-action-menu p-3">
+                    <form method="post" action="{{ url_for('move_friend_group', friend_id=friend.id) }}" class="friend-move-form">
+                        <label class="form-label small text-secondary mb-1">移动到分组</label>
+                        <div class="d-flex gap-2">
+                            <input class="form-control form-control-sm" name="friend_group" value="{{ group_name }}" placeholder="输入分组名">
+                            <button class="btn btn-sm btn-outline-secondary" type="submit">移动</button>
+                        </div>
+                    </form>
+                    <form method="post" action="{{ url_for('delete_friend', friend_id=friend.id) }}" class="mt-2" onsubmit="return confirm('确定删除该好友吗？历史消息会继续保留用于医疗审计。')">
+                        <button class="btn btn-sm btn-outline-danger w-100" type="submit">
+                            <i class="bi bi-person-dash me-1"></i>删除好友
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </article>
+    {% endfor %}
+</section>
+{% endfor %}
+{% else %}
+<div class="friend-empty-state friend-global-empty">
+    <i class="bi bi-person-plus"></i>
+    <span>暂无好友，添加医生后会在这里按分组展示。</span>
+    <a href="{{ url_for('add_friend') }}">添加好友</a>
+</div>
+{% endif %}
+
+{% if friend_count and active_group_count < grouped_friends|length %}
+<div class="friend-empty-groups">
+    <span>空分组</span>
+    {% for group_name, friends in grouped_friends.items() if not friends %}
+    <a href="{{ url_for('friend_group_manager') }}">{{ group_name }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div id="friendNoResult" class="friend-empty-state friend-search-empty" hidden>
+    <i class="bi bi-search"></i>
+    <span>没有匹配的好友</span>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-clear-friend-filter>清空搜索</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function initFriendFilter() {
+    const input = document.getElementById("friendFilter");
+    if (!input) return;
+    const count = document.getElementById("friendFilterCount");
+    const empty = document.getElementById("friendNoResult");
+    const rows = Array.from(document.querySelectorAll("[data-friend-search]"));
+    const groups = Array.from(document.querySelectorAll("[data-friend-group]"));
+
+    function refresh() {
+        const query = input.value.trim().toLowerCase();
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const matched = !query || row.dataset.friendSearch.toLowerCase().includes(query);
+            row.hidden = !matched;
+            if (matched) visibleCount += 1;
+        });
+
+        groups.forEach(group => {
+            const groupRows = Array.from(group.querySelectorAll("[data-friend-search]"));
+            const hasVisibleFriend = groupRows.some(row => !row.hidden);
+            group.hidden = query ? !hasVisibleFriend : false;
+        });
+
+        if (count) count.textContent = visibleCount;
+        if (empty) empty.hidden = visibleCount !== 0;
+    }
+
+    input.addEventListener("input", refresh);
+    document.querySelector("[data-clear-friend-filter]")?.addEventListener("click", () => {
+        input.value = "";
+        input.focus();
+        refresh();
+    });
+})();
+</script>
+{% endblock %}

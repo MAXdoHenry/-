@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}微信 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}微信{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('global_search') }}" title="搜索"><i class="bi bi-search"></i></a>
+<span class="quick-menu-wrap">
+    <button class="icon-button quick-menu-toggle" type="button" title="新建" aria-expanded="false">
+        <i class="bi bi-plus-lg"></i>
+    </button>
+    <span class="quick-menu">
+        <a href="{{ url_for('new_group') }}"><i class="bi bi-people"></i>发起群聊</a>
+        <a href="{{ url_for('add_friend') }}"><i class="bi bi-person-plus"></i>添加朋友</a>
+    </span>
+</span>
+{% endblock %}
+
+{% block content %}
+{% if threads %}
+    {% for thread in threads %}
+    <a class="list-row conversation-row" href="{% if thread.kind == 'private' %}{{ url_for('private_chat', friend_id=thread.target_id) }}{% else %}{{ url_for('group_chat', group_id=thread.target_id) }}{% endif %}">
+        <div class="avatar-wrap">
+            <div class="avatar-circle {% if thread.kind == 'group' %}group-avatar{% endif %}">
+                {% if thread.kind == 'group' %}<i class="bi bi-people"></i>{% else %}{{ thread.avatar }}{% endif %}
+            </div>
+            <span class="presence-dot"></span>
+        </div>
+        <div class="row-main">
+            <div class="row-title">
+                <span>{{ thread.title }}</span>
+                {% if thread.kind == 'group' %}
+                <span class="text-secondary small"><i class="bi bi-people"></i></span>
+                {% endif %}
+            </div>
+            <div class="row-subtitle">{{ thread.last_message or "暂无消息" }}</div>
+        </div>
+        <div class="row-meta">
+            <div>{{ thread.last_time }}</div>
+            {% if thread.unread_count %}
+            <div class="mt-2"><span class="wechat-badge">{{ thread.unread_count }}</span></div>
+            {% endif %}
+        </div>
+    </a>
+    {% endfor %}
+{% else %}
+<div class="empty-state">
+    暂无会话
+    <div class="mt-3">
+        <a class="btn btn-primary btn-sm" href="{{ url_for('add_friend') }}">添加好友</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('new_group') }}">新建群聊</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

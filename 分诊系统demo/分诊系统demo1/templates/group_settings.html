@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}群设置 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}群聊信息{% endblock %}
+{% block header_left %}
+<a class="icon-button" href="{{ url_for('group_chat', group_id=group.id) }}" title="返回群聊"><i class="bi bi-chevron-left"></i></a>
+{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('group_invite', group_id=group.id) }}" title="邀请成员"><i class="bi bi-person-plus"></i></a>
+{% endblock %}
+
+{% block content %}
+<div class="wechat-settings-screen">
+    <section class="wechat-group-hero">
+        <div class="wechat-group-avatar">
+            <i class="bi bi-people-fill"></i>
+        </div>
+        <div class="wechat-group-info">
+            <div class="wechat-group-name">{{ group.group_name }}</div>
+            <div class="wechat-group-meta">{{ group_type_label(group.group_type) }} · {{ members|length }} 位成员</div>
+        </div>
+        <span class="wechat-role-chip">
+            {% if current_role == 'owner' %}群主{% elif current_role == 'admin' %}管理员{% else %}成员{% endif %}
+        </span>
+    </section>
+
+    <section class="wechat-list-panel">
+        <div class="wechat-cell wechat-cell-static">
+            <span class="wechat-cell-label">群成员</span>
+            <span class="wechat-cell-value">{{ members|length }} 人</span>
+        </div>
+        <div class="wechat-member-grid">
+            {% for member in members %}
+            <div class="wechat-member-tile">
+                <div class="wechat-member-avatar">
+                    {{ member.avatar or member.name[:1] }}
+                    {% if member.role == 'owner' %}
+                    <span class="wechat-member-role"><i class="bi bi-shield-fill-check"></i></span>
+                    {% elif member.role == 'admin' %}
+                    <span class="wechat-member-role"><i class="bi bi-star-fill"></i></span>
+                    {% endif %}
+                    {% if current_role == 'owner' and member.user_id != current_user.id and member.role != 'owner' %}
+                    <form method="post"
+                          action="{{ url_for('group_remove_member', group_id=group.id, user_id=member.user_id) }}"
+                          onsubmit="return confirm('确认将 {{ member.name }} 移出群聊吗？历史消息会继续保留。')">
+                        <button class="wechat-member-remove" type="submit" title="移出群聊" aria-label="移出群聊">
+                            <i class="bi bi-dash"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                <div class="wechat-member-name">{{ member.name }}</div>
+                <div class="wechat-member-subtitle">{{ member.title }}</div>
+            </div>
+            {% endfor %}
+            <a class="wechat-member-tile wechat-member-add" href="{{ url_for('group_invite', group_id=group.id) }}">
+                <span class="wechat-add-box"><i class="bi bi-plus-lg"></i></span>
+                <span class="wechat-member-name">添加</span>
+            </a>
+        </div>
+    </section>
+
+    <form method="post">
+        <section class="wechat-list-panel">
+            <label class="wechat-cell wechat-cell-editable">
+                <span class="wechat-cell-label">群聊名称</span>
+                <input class="wechat-cell-input" name="group_name" value="{{ group.group_name }}" {% if current_role != 'owner' %}readonly{% endif %}>
+            </label>
+            <div class="wechat-cell wechat-cell-static">
+                <span class="wechat-cell-label">群类型</span>
+                <span class="wechat-cell-value">{{ group_type_label(group.group_type) }}</span>
+            </div>
+            <label class="wechat-cell wechat-cell-editable wechat-cell-text">
+                <span class="wechat-cell-label">群简介</span>
+                <textarea class="wechat-cell-textarea" name="description" rows="2" {% if current_role != 'owner' %}readonly{% endif %}>{{ group.description }}</textarea>
+            </label>
+        </section>
+
+        {% if current_role == 'owner' %}
+        <div class="wechat-action-block">
+            <button class="wechat-primary-action" type="submit">保存群资料</button>
+        </div>
+        {% endif %}
+    </form>
+
+    <section class="wechat-list-panel">
+        <a class="wechat-cell wechat-link-cell" href="{{ url_for('group_chat', group_id=group.id) }}">
+            <span class="wechat-cell-label">返回群聊</span>
+            <i class="bi bi-chevron-right"></i>
+        </a>
+        <a class="wechat-cell wechat-link-cell" href="{{ url_for('group_invite', group_id=group.id) }}">
+            <span class="wechat-cell-label">邀请成员</span>
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </section>
+
+    <form method="post"
+          action="{{ url_for('group_leave', group_id=group.id) }}"
+          class="wechat-action-block"
+          onsubmit="return confirm('{% if current_role == 'owner' %}你是群主，退出前系统会自动把群主转让给其他成员。确认继续退出吗？{% else %}确定退出该群吗？历史消息将继续保留用于医疗审计。{% endif %}')">
+        <button class="wechat-danger-action" type="submit">退出群聊</button>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}私聊 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}{{ friend.name }}{% endblock %}
+{% block header_left %}
+<a class="icon-button" href="{{ url_for('messages') }}" title="返回消息"><i class="bi bi-chevron-left"></i></a>
+{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('friend_profile', friend_id=friend.id) }}" title="查看资料"><i class="bi bi-person-vcard"></i></a>
+{% endblock %}
+
+{% block content %}
+<section class="chat-screen">
+    <div class="chat-context-bar">
+        <div class="chat-context-main">
+            <div class="avatar-wrap">
+                <div class="avatar-circle">{{ avatar_text(friend) }}</div>
+                <span class="presence-dot"></span>
+            </div>
+            <div class="min-w-0">
+                <h1 class="h6 medical-title mb-1 text-truncate">{{ friend.name }}｜{{ friend.title }}</h1>
+                <div class="text-secondary small text-truncate">{{ friend.hospital_name }}｜{{ friend.department }}</div>
+            </div>
+        </div>
+        <div class="chat-context-actions">
+            <span id="chatConnection" class="chat-connection is-waiting"><span class="connection-dot"></span><span data-connection-label>连接中</span></span>
+            <a class="btn btn-sm btn-primary" href="{{ url_for('new_consultation', invite_user_id=friend.id) }}"><i class="bi bi-file-medical me-1"></i>会诊</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('friends') }}"><i class="bi bi-person-lines-fill me-1"></i>好友</a>
+        </div>
+    </div>
+
+    <div id="chatPanel" class="chat-panel p-3"
+         data-chat-type="private"
+         data-target-id="{{ friend.id }}"
+         data-current-user-id="{{ current_user.id }}"
+         data-current-avatar="{{ current_user.avatar or current_user.name[:1] }}"
+         data-peer-avatar="{{ avatar_text(friend) }}"
+         data-ws-base="{{ chat_ws_base }}"
+         data-token="{{ chat_token }}">
+        {% for message in messages %}
+        <div class="chat-row {% if message.sender_id == current_user.id %}self{% endif %}">
+            {% if message.sender_id != current_user.id %}
+            <div class="avatar-circle">{{ avatar_text(friend) }}</div>
+            {% endif %}
+            <div class="chat-bubble">
+                <div class="content-text">{{ message.content }}</div>
+                {% if contains_sensitive_terms(message.content) %}
+                <div class="risk-note">本交流仅作临床参考，不作为正式诊断依据。</div>
+                {% endif %}
+                <div class="text-secondary small mt-2">
+                    {{ message.send_time }}
+                    {% if message.sender_id == current_user.id %}
+                    ｜{{ "已读" if message.is_read else "未读" }}
+                    {% endif %}
+                </div>
+            </div>
+            {% if message.sender_id == current_user.id %}
+            <div class="avatar-circle">{{ current_user.avatar or current_user.name[:1] }}</div>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="empty-chat text-secondary mb-0">暂无消息。</p>
+        {% endfor %}
+    </div>
+
+    <form id="chatForm" class="chat-composer" method="post">
+        <div class="composer-shell">
+            <textarea class="composer-textarea" name="content" rows="1" required placeholder="输入消息"></textarea>
+            <button class="send-orb" type="submit" title="发送" aria-label="发送"><i class="bi bi-send-fill"></i></button>
+        </div>
+    </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chatPanel = document.getElementById("chatPanel");
+const chatForm = document.getElementById("chatForm");
+const textarea = chatForm.querySelector('textarea[name="content"]');
+const sendButton = chatForm.querySelector(".send-orb");
+const connectionStatus = document.getElementById("chatConnection");
+const connectionLabel = connectionStatus.querySelector("[data-connection-label]");
+const wsUrl = `${chatPanel.dataset.wsBase}/chat?token=${encodeURIComponent(chatPanel.dataset.token)}`;
+let chatSocket;
+
+function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    }[char]));
+}
+
+function setConnectionState(state, label) {
+    connectionStatus.classList.remove("is-online", "is-waiting", "is-offline");
+    connectionStatus.classList.add(`is-${state}`);
+    connectionLabel.textContent = label;
+}
+
+function appendMessage(message) {
+    const currentUserId = Number(chatPanel.dataset.currentUserId);
+    const isSelf = Number(message.sender_id) === currentUserId;
+    const avatar = isSelf ? chatPanel.dataset.currentAvatar : chatPanel.dataset.peerAvatar;
+    const empty = chatPanel.querySelector(".empty-chat");
+    if (empty) empty.remove();
+    const row = document.createElement("div");
+    row.className = `chat-row ${isSelf ? "self" : ""}`;
+    row.innerHTML = `
+        ${isSelf ? "" : `<div class="avatar-circle">${escapeHtml(avatar)}</div>`}
+        <div class="chat-bubble">
+            <div class="content-text">${escapeHtml(message.content)}</div>
+            <div class="text-secondary small mt-2">${escapeHtml(message.send_time)}${isSelf ? "｜未读" : ""}</div>
+        </div>
+        ${isSelf ? `<div class="avatar-circle">${escapeHtml(avatar)}</div>` : ""}
+    `;
+    chatPanel.appendChild(row);
+    chatPanel.scrollTop = chatPanel.scrollHeight;
+}
+
+function connectChat() {
+    setConnectionState("waiting", "连接中");
+    chatSocket = new WebSocket(wsUrl);
+    chatSocket.addEventListener("open", () => {
+        setConnectionState("online", "实时连接");
+        chatSocket.send(JSON.stringify({
+            type: "join",
+            chat_type: chatPanel.dataset.chatType,
+            target_id: Number(chatPanel.dataset.targetId)
+        }));
+    });
+    chatSocket.addEventListener("message", event => {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "message" && payload.chat_type === "private") {
+            appendMessage(payload.message);
+        }
+    });
+    chatSocket.addEventListener("error", () => {
+        setConnectionState("offline", "连接波动");
+    });
+    chatSocket.addEventListener("close", () => {
+        setConnectionState("waiting", "重连中");
+        setTimeout(connectChat, 1600);
+    });
+}
+
+function resizeComposerInput() {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+}
+
+connectChat();
+chatPanel.scrollTop = chatPanel.scrollHeight;
+resizeComposerInput();
+
+textarea.addEventListener("input", resizeComposerInput);
+
+textarea.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        chatForm.requestSubmit();
+    }
+});
+
+chatForm.addEventListener("submit", event => {
+    event.preventDefault();
+    if (!warnSensitiveContent(chatForm)) return;
+    const content = textarea.value.trim();
+    if (!content) return;
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+        chatForm.submit();
+        return;
+    }
+    if (sendButton.animate) {
+        sendButton.animate([
+            { transform: "scale(.9)" },
+            { transform: "scale(1)" }
+        ], { duration: 180, easing: "ease-out" });
+    }
+    chatSocket.send(JSON.stringify({
+        type: "message",
+        chat_type: chatPanel.dataset.chatType,
+        target_id: Number(chatPanel.dataset.targetId),
+        content
+    }));
+    textarea.value = "";
+    resizeComposerInput();
+});
+</script>
+{% endblock %}

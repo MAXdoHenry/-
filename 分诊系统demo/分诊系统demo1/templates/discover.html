@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}回信 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}回信{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('global_search') }}" title="搜索"><i class="bi bi-search"></i></a>
+<a class="icon-button" href="{{ url_for('new_consultation') }}" title="发起提问"><i class="bi bi-plus-lg"></i></a>
+{% endblock %}
+
+{% macro consultation_row(item, mode='mine') %}
+<a class="discover-card d-block text-reset" href="{{ url_for('consultation_detail', consultation_id=item.id) }}">
+    <div class="d-flex align-items-center gap-3">
+        <div class="function-icon {% if mode == 'mine' %}blue{% else %}green{% endif %}">
+            {% if mode == 'mine' %}<i class="bi bi-file-medical"></i>{% else %}{{ item.asker_name[:1] }}{% endif %}
+        </div>
+        <div class="row-main">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="row-title">
+                    {% if mode == 'mine' %}
+                    <span>{{ item.title }}</span>
+                    {% else %}
+                    <span>{{ item.asker_name }}｜{{ item.asker_hospital_name }}</span>
+                    {% endif %}
+                </div>
+                <div class="row-meta">{{ item.create_time }}</div>
+            </div>
+            <div class="row-subtitle">
+                {% if mode == 'mine' %}
+                请教：{{ item.target_hospital_name }}｜{{ item.content }}
+                {% else %}
+                {{ item.title }}｜{{ item.content }}
+                {% endif %}
+            </div>
+        </div>
+        <span class="badge {{ status_class(item.status) }}">{{ item.status }}</span>
+    </div>
+</a>
+{% endmacro %}
+
+{% block content %}
+<div class="wechat-stats">
+    <a class="wechat-stat-item" href="#my-consultations">
+        <div class="wechat-stat-num">{{ stats.my_total }}</div>
+        <div class="wechat-stat-label">我发起</div>
+    </a>
+    <a class="wechat-stat-item" href="#my-pending">
+        <div class="wechat-stat-num">{{ stats.my_pending }}</div>
+        <div class="wechat-stat-label">待回复</div>
+    </a>
+    <a class="wechat-stat-item" href="#my-replied">
+        <div class="wechat-stat-num">{{ stats.my_replied }}</div>
+        <div class="wechat-stat-label">已回复</div>
+    </a>
+    <a class="wechat-stat-item" href="#actionable-consultations">
+        <div class="wechat-stat-num">{{ stats.subordinate_pending }}</div>
+        <div class="wechat-stat-label">可处理</div>
+    </a>
+</div>
+
+<div id="my-consultations" class="section-band">我发起的提问</div>
+{% if my_consultations %}
+    {% for item in my_consultations %}
+    {{ consultation_row(item, 'mine') }}
+    {% endfor %}
+{% else %}
+<div class="empty-state">暂无自己发起的提问</div>
+{% endif %}
+
+<div id="my-pending" class="section-band">我的待回复</div>
+{% if my_pending_consultations %}
+    {% for item in my_pending_consultations %}
+    {{ consultation_row(item, 'mine') }}
+    {% endfor %}
+{% else %}
+<div class="empty-state">暂无等待对方回复的提问</div>
+{% endif %}
+
+<div id="my-replied" class="section-band">我的已回复</div>
+{% if my_replied_consultations %}
+    {% for item in my_replied_consultations %}
+    {{ consultation_row(item, 'mine') }}
+    {% endfor %}
+{% else %}
+<div class="empty-state">暂无已回复提问</div>
+{% endif %}
+
+<div id="actionable-consultations" class="section-band">可处理待回复</div>
+{% if actionable_consultations %}
+    {% for item in actionable_consultations %}
+    {{ consultation_row(item, 'other') }}
+    {% endfor %}
+{% else %}
+<div class="empty-state">暂无需要我处理的待回复提问</div>
+{% endif %}
+
+<div class="section-band">别人公开或指派给我的提问</div>
+{% if visible_consultations %}
+    {% for item in visible_consultations %}
+    {{ consultation_row(item, 'other') }}
+    {% endfor %}
+{% else %}
+<div class="empty-state">暂无可查看的他人提问</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}群聊 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}{{ group.group_name }}{% endblock %}
+{% block header_left %}
+<a class="icon-button" href="{{ url_for('messages') }}" title="返回消息"><i class="bi bi-chevron-left"></i></a>
+{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('group_settings', group_id=group.id) }}" title="群设置"><i class="bi bi-gear"></i></a>
+{% endblock %}
+
+{% block content %}
+<section class="chat-screen">
+    <div class="chat-context-bar">
+        <div class="chat-context-main">
+            <div class="avatar-wrap">
+                <div class="square-avatar group-avatar"><i class="bi bi-people-fill"></i></div>
+                <span class="presence-dot"></span>
+            </div>
+            <div class="min-w-0">
+                <h1 class="h6 medical-title mb-1 text-truncate">{{ group.group_name }}</h1>
+                <div class="text-secondary small text-truncate">{{ group_type_label(group.group_type) }} · 成员 {{ members|length }} 人</div>
+            </div>
+        </div>
+        <div class="chat-context-actions">
+            <span id="chatConnection" class="chat-connection is-waiting"><span class="connection-dot"></span><span data-connection-label>连接中</span></span>
+            {% if group.consultation_id %}
+            <a class="btn btn-sm btn-primary" href="{{ url_for('consultation_detail', consultation_id=group.consultation_id) }}"><i class="bi bi-file-medical me-1"></i>病例</a>
+            {% else %}
+            <a class="btn btn-sm btn-primary" href="{{ url_for('new_consultation', source_group_id=group.id) }}"><i class="bi bi-file-medical me-1"></i>会诊</a>
+            {% endif %}
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('groups') }}"><i class="bi bi-people me-1"></i>群聊</a>
+        </div>
+    </div>
+
+    <div id="chatPanel" class="chat-panel p-3"
+         data-chat-type="group"
+         data-target-id="{{ group.id }}"
+         data-current-user-id="{{ current_user.id }}"
+         data-current-avatar="{{ current_user.avatar or current_user.name[:1] }}"
+         data-ws-base="{{ chat_ws_base }}"
+         data-token="{{ chat_token }}">
+        {% for message in messages %}
+        <div class="chat-row {% if message.sender_id == current_user.id %}self{% endif %}">
+            {% if message.sender_id != current_user.id %}
+            <div class="avatar-circle">{{ message.sender_name[:1] }}</div>
+            {% endif %}
+            <div class="chat-bubble">
+                {% if message.sender_id != current_user.id %}
+                <div class="fw-semibold small">{{ message.sender_name }} · {{ message.sender_hospital }} · {{ message.sender_department }}</div>
+                {% endif %}
+                {% if message.content %}
+                <div class="content-text">{{ message.content }}</div>
+                {% endif %}
+                {% if message.attachment_path %}
+                <div class="mt-2">
+                    {% if is_image_file(message.attachment_name or message.attachment_path) %}
+                    <img class="img-fluid rounded border mb-2" src="{{ url_for('download_attachment', filename=message.attachment_path) }}" alt="群聊附件">
+                    {% elif is_video_file(message.attachment_name or message.attachment_path) %}
+                    <video class="w-100 rounded border mb-2" controls>
+                        <source src="{{ url_for('download_attachment', filename=message.attachment_path) }}">
+                    </video>
+                    {% endif %}
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('download_attachment', filename=message.attachment_path) }}">
+                        下载附件：{{ message.attachment_name or "附件" }}
+                    </a>
+                </div>
+                {% endif %}
+                {% if contains_sensitive_terms(message.content) %}
+                <div class="risk-note">本交流仅作临床参考，不作为正式诊断依据。</div>
+                {% endif %}
+                <div class="text-secondary small mt-2">{{ message.send_time }}</div>
+            </div>
+            {% if message.sender_id == current_user.id %}
+            <div class="avatar-circle">{{ current_user.avatar or current_user.name[:1] }}</div>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="empty-chat text-secondary mb-0">暂无消息。</p>
+        {% endfor %}
+    </div>
+
+    <form id="chatForm" class="chat-composer" method="post" enctype="multipart/form-data">
+        <div class="composer-shell group-composer-shell">
+            <button class="composer-icon-btn" type="button" title="语音输入" aria-label="语音输入">
+                <i class="bi bi-volume-up-fill"></i>
+            </button>
+            <textarea class="composer-textarea" name="content" rows="1" placeholder="输入群消息"></textarea>
+            <label class="composer-icon-btn" for="groupAttachment" title="选择图片、视频或文档" aria-label="选择图片、视频或文档">
+                <i class="bi bi-plus-lg"></i>
+            </label>
+            <button class="send-orb" type="submit" title="发送" aria-label="发送"><i class="bi bi-send-fill"></i></button>
+        </div>
+        <input class="visually-hidden" id="groupAttachment" type="file" name="group_attachment" accept="image/*,video/*,.pdf">
+        <div id="selectedFileName" class="selected-file-name text-secondary small"></div>
+    </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chatPanel = document.getElementById("chatPanel");
+const chatForm = document.getElementById("chatForm");
+const textarea = chatForm.querySelector('textarea[name="content"]');
+const sendButton = chatForm.querySelector(".send-orb");
+const fileInput = chatForm.querySelector('input[name="group_attachment"]');
+const selectedFileName = document.getElementById("selectedFileName");
+const connectionStatus = document.getElementById("chatConnection");
+const connectionLabel = connectionStatus.querySelector("[data-connection-label]");
+const wsUrl = `${chatPanel.dataset.wsBase}/chat?token=${encodeURIComponent(chatPanel.dataset.token)}`;
+let chatSocket;
+
+function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    }[char]));
+}
+
+function setConnectionState(state, label) {
+    connectionStatus.classList.remove("is-online", "is-waiting", "is-offline");
+    connectionStatus.classList.add(`is-${state}`);
+    connectionLabel.textContent = label;
+}
+
+function appendMessage(message) {
+    const currentUserId = Number(chatPanel.dataset.currentUserId);
+    const isSelf = Number(message.sender_id) === currentUserId;
+    const empty = chatPanel.querySelector(".empty-chat");
+    if (empty) empty.remove();
+    const avatar = isSelf ? chatPanel.dataset.currentAvatar : String(message.sender_name || "").slice(0, 1);
+    const meta = isSelf ? "" : `<div class="fw-semibold small">${escapeHtml(message.sender_name)} · ${escapeHtml(message.sender_hospital)} · ${escapeHtml(message.sender_department)}</div>`;
+    const row = document.createElement("div");
+    row.className = `chat-row ${isSelf ? "self" : ""}`;
+    row.innerHTML = `
+        ${isSelf ? "" : `<div class="avatar-circle">${escapeHtml(avatar)}</div>`}
+        <div class="chat-bubble">
+            ${meta}
+            <div class="content-text">${escapeHtml(message.content)}</div>
+            <div class="text-secondary small mt-2">${escapeHtml(message.send_time)}</div>
+        </div>
+        ${isSelf ? `<div class="avatar-circle">${escapeHtml(avatar)}</div>` : ""}
+    `;
+    chatPanel.appendChild(row);
+    chatPanel.scrollTop = chatPanel.scrollHeight;
+}
+
+function connectChat() {
+    setConnectionState("waiting", "连接中");
+    chatSocket = new WebSocket(wsUrl);
+    chatSocket.addEventListener("open", () => {
+        setConnectionState("online", "实时连接");
+        chatSocket.send(JSON.stringify({
+            type: "join",
+            chat_type: chatPanel.dataset.chatType,
+            target_id: Number(chatPanel.dataset.targetId)
+        }));
+    });
+    chatSocket.addEventListener("message", event => {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "message" && payload.chat_type === "group") {
+            appendMessage(payload.message);
+        }
+    });
+    chatSocket.addEventListener("error", () => {
+        setConnectionState("offline", "连接波动");
+    });
+    chatSocket.addEventListener("close", () => {
+        setConnectionState("waiting", "重连中");
+        setTimeout(connectChat, 1600);
+    });
+}
+
+function resizeComposerInput() {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 110)}px`;
+}
+
+connectChat();
+chatPanel.scrollTop = chatPanel.scrollHeight;
+resizeComposerInput();
+
+textarea.addEventListener("input", resizeComposerInput);
+
+fileInput.addEventListener("change", () => {
+    selectedFileName.textContent = fileInput.files.length > 0
+        ? `附件：${fileInput.files[0].name}`
+        : "";
+});
+
+textarea.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        chatForm.requestSubmit();
+    }
+});
+
+chatForm.addEventListener("submit", event => {
+    if (fileInput.files.length > 0) {
+        if (!warnSensitiveContent(chatForm)) {
+            event.preventDefault();
+        }
+        return;
+    }
+    event.preventDefault();
+    if (!warnSensitiveContent(chatForm)) return;
+    const content = textarea.value.trim();
+    if (!content) return;
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+        chatForm.submit();
+        return;
+    }
+    if (sendButton.animate) {
+        sendButton.animate([
+            { transform: "scale(.9)" },
+            { transform: "scale(1)" }
+        ], { duration: 180, easing: "ease-out" });
+    }
+    chatSocket.send(JSON.stringify({
+        type: "message",
+        chat_type: chatPanel.dataset.chatType,
+        target_id: Number(chatPanel.dataset.targetId),
+        content
+    }));
+    textarea.value = "";
+    resizeComposerInput();
+});
+</script>
+{% endblock %}

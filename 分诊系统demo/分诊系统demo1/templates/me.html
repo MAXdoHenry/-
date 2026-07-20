@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}我 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}我{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('global_search') }}" title="搜索"><i class="bi bi-search"></i></a>
+<span class="quick-menu-wrap">
+    <button class="icon-button quick-menu-toggle" type="button" title="新建" aria-expanded="false">
+        <i class="bi bi-plus-lg"></i>
+    </button>
+    <span class="quick-menu">
+        <a href="{{ url_for('new_group') }}"><i class="bi bi-people"></i>发起群聊</a>
+        <a href="{{ url_for('add_friend') }}"><i class="bi bi-person-plus"></i>添加朋友</a>
+    </span>
+</span>
+{% endblock %}
+
+{% block content %}
+<section class="profile-hero">
+    <div class="profile-info">
+        <div class="profile-avatar">{{ current_user.avatar or current_user.name[:1] }}</div>
+        <div class="min-w-0">
+            <div class="profile-name">{{ current_user.name }}（{{ current_user.title }}）</div>
+            <div class="profile-meta-item">{{ current_user.hospital_name }}</div>
+            <div class="profile-meta-item">{{ current_user.department }}｜{{ current_user.role }}</div>
+            <a class="profile-edit-link" href="{{ url_for('edit_profile') }}">填写个人信息</a>
+        </div>
+    </div>
+</section>
+
+<div class="wechat-stats">
+    <div class="wechat-stat-item">
+        <div class="wechat-stat-num">{{ stats.my_total }}</div>
+        <div class="wechat-stat-label">发起</div>
+    </div>
+    <div class="wechat-stat-item">
+        <div class="wechat-stat-num">{{ stats.my_pending }}</div>
+        <div class="wechat-stat-label">待回复</div>
+    </div>
+    <div class="wechat-stat-item">
+        <div class="wechat-stat-num">{{ stats.my_replied }}</div>
+        <div class="wechat-stat-label">已回复</div>
+    </div>
+    <div class="wechat-stat-item">
+        <div class="wechat-stat-num">{{ stats.subordinate_pending }}</div>
+        <div class="wechat-stat-label">可处理</div>
+    </div>
+</div>
+
+<div class="section-band">快捷入口</div>
+<a class="list-row" href="{{ url_for('new_consultation') }}">
+    <div class="function-icon blue"><i class="bi bi-plus-circle"></i></div>
+    <div class="row-main">
+        <div class="row-title">发起病例会诊</div>
+        <div class="row-subtitle">提交疑难病例并邀请医院或好友协作</div>
+    </div>
+    <span class="wechat-chevron">›</span>
+</a>
+<a class="list-row" href="{{ url_for('my_consultations') }}">
+    <div class="function-icon green"><i class="bi bi-journal-medical"></i></div>
+    <div class="row-main">
+        <div class="row-title">我的全部提问</div>
+        <div class="row-subtitle">查看自己发起的完整提问记录</div>
+    </div>
+    <span class="wechat-chevron">›</span>
+</a>
+<a class="list-row" href="{{ url_for('edit_profile') }}">
+    <div class="function-icon gray"><i class="bi bi-person-gear"></i></div>
+    <div class="row-main">
+        <div class="row-title">填写个人信息</div>
+        <div class="row-subtitle">维护姓名、科室、职称和联系方式</div>
+    </div>
+    <span class="wechat-chevron">›</span>
+</a>
+
+<div class="section-band">我发起的提问</div>
+{% if my_consultations %}
+    {% for item in my_consultations %}
+    <a class="list-row" href="{{ url_for('consultation_detail', consultation_id=item.id) }}">
+        <div class="function-icon orange"><i class="bi bi-file-medical"></i></div>
+        <div class="row-main">
+            <div class="row-title">{{ item.title }}</div>
+            <div class="row-subtitle">请教：{{ item.target_hospital_name }}｜{{ item.create_time }}</div>
+        </div>
+        <span class="badge {{ status_class(item.status) }}">{{ item.status }}</span>
+    </a>
+    {% endfor %}
+{% else %}
+<div class="empty-state">暂无自己发起的提问</div>
+{% endif %}
+{% endblock %}

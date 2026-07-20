@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}添加好友 - 医联体分级会诊系统{% endblock %}
+
+{% block content %}
+<div class="page-card p-3 p-md-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 medical-title mb-0">添加好友</h1>
+        <a class="btn btn-outline-secondary" href="{{ url_for('friends') }}">返回好友</a>
+    </div>
+    <form class="row g-2 mb-3" method="get">
+        <div class="col-12 col-md-9">
+            <input id="friendSearchInput" class="form-control" name="q" value="{{ query }}" placeholder="输入手机号或微信号，例如：1、2、3、4">
+        </div>
+        <div class="col-12 col-md-3">
+            <button class="btn btn-primary w-100" type="submit">搜索</button>
+        </div>
+    </form>
+    <div class="form-text mb-3">演示账号的手机号和微信号都用简单数字：张主任=1，李医生=2，王医生=3，赵医生=4。</div>
+
+    <div id="liveResults"></div>
+
+    {% if query and not results %}
+    <div class="alert alert-warning">未找到对应用户，请确认手机号/微信号是否正确。</div>
+    {% endif %}
+
+    {% for user in results %}
+    <div class="border rounded p-3 mb-3 bg-light">
+        <div class="d-flex gap-3">
+            <div class="avatar-circle">{{ avatar_text(user) }}</div>
+            <div class="flex-grow-1">
+                <div class="fw-semibold">{{ user.name }}｜{{ user.title }}</div>
+                <div class="text-secondary small">{{ user.hospital_name }}｜{{ user.department }}</div>
+                <form method="post" class="mt-3">
+                    <input type="hidden" name="friend_id" value="{{ user.id }}">
+                    <label class="form-label">验证消息</label>
+                    <input class="form-control mb-2" name="apply_msg" value="我是{{ current_user.hospital_name }}{{ current_user.department }}的{{ current_user.name }}">
+                    <button class="btn btn-primary" type="submit">添加好友</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const input = document.getElementById("friendSearchInput");
+const box = document.getElementById("liveResults");
+let timer = null;
+input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (!q) {
+        box.innerHTML = "";
+        return;
+    }
+    timer = setTimeout(async () => {
+        const res = await fetch(`{{ url_for('search_friend_json') }}?q=${encodeURIComponent(q)}`);
+        const users = await res.json();
+        if (!users.length) {
+            box.innerHTML = '<div class="alert alert-warning">未找到对应用户，请确认手机号/微信号是否正确。</div>';
+            return;
+        }
+        box.innerHTML = users.map(user => `
+            <div class="border rounded p-3 mb-3 bg-light">
+                <div class="fw-semibold">${user.name}｜${user.title}</div>
+                <div class="text-secondary small">${user.hospital}｜${user.department}</div>
+                <div class="text-secondary small">手机号：${user.phone}｜微信号：${user.wechat_id}</div>
+                <div class="small mt-1">当前关系：${user.status || "可申请"}</div>
+            </div>
+        `).join("");
+    }, 250);
+});
+</script>
+{% endblock %}

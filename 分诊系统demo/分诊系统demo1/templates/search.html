@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}搜索 - 医联体分级会诊系统{% endblock %}
+{% block page_title %}搜索{% endblock %}
+{% block header_actions %}
+<a class="icon-button" href="{{ url_for('messages') }}" title="返回"><i class="bi bi-x-lg"></i></a>
+{% endblock %}
+
+{% block content %}
+<form class="p-2 bg-white border-bottom" method="get" action="{{ url_for('global_search') }}">
+    <div class="input-group">
+        <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
+        <input class="form-control border-0 bg-light" name="q" value="{{ query }}" placeholder="搜索聊天记录，或输入手机号/微信号添加好友" autofocus>
+        <button class="btn btn-primary" type="submit">搜索</button>
+    </div>
+</form>
+
+{% if query %}
+<div class="section-band">可添加的医生</div>
+{% if user_results %}
+    {% for user in user_results %}
+    <div class="list-row">
+        <div class="avatar-circle">{{ avatar_text(user) }}</div>
+        <div class="row-main">
+            <div class="row-title">{{ user.name }}｜{{ user.title }}</div>
+            <div class="row-subtitle">{{ user.hospital_name }}｜{{ user.department }}｜微信号：{{ user.wechat_id }}</div>
+        </div>
+        <form method="post" action="{{ url_for('add_friend') }}">
+            <input type="hidden" name="friend_id" value="{{ user.id }}">
+            <input type="hidden" name="apply_msg" value="我是{{ current_user.hospital_name }}{{ current_user.department }}的{{ current_user.name }}">
+            <button class="btn btn-sm btn-outline-success" type="submit">添加</button>
+        </form>
+    </div>
+    {% endfor %}
+{% else %}
+<div class="empty-state">没有找到可添加的医生</div>
+{% endif %}
+
+<div class="section-band">聊天记录</div>
+{% if message_results %}
+    {% for item in message_results %}
+    <a class="list-row" href="{{ item.url }}">
+        <div class="function-icon {% if item.kind == 'group' %}green{% else %}gray{% endif %}">
+            <i class="bi {% if item.kind == 'group' %}bi-people{% else %}bi-chat-dots{% endif %}"></i>
+        </div>
+        <div class="row-main">
+            <div class="row-title">{{ item.title }}</div>
+            <div class="row-subtitle">{{ item.subtitle }}｜{{ item.content }}</div>
+        </div>
+        <div class="row-meta">{{ item.send_time }}</div>
+    </a>
+    {% endfor %}
+{% else %}
+<div class="empty-state">没有找到聊天记录</div>
+{% endif %}
+{% else %}
+<div class="empty-state">输入关键词搜索自己的聊天记录，也可以输入他人手机号或微信号添加好友</div>
+{% endif %}
+{% endblock %}
